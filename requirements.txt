@@ -1,0 +1,41 @@
+# Build tools (required for Python 3.12+ compatibility)
+setuptools>=65.0.0
+wheel
+
+# FastAPI and web framework
+fastapi>=0.104.0,<0.112.0
+uvicorn[standard]>=0.24.0,<0.31.0
+pydantic>=2.5.0,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+
+# Database and ORM
+sqlalchemy>=2.0.0,<2.1.0
+psycopg2-binary>=2.9.0,<3.0.0
+
+# Machine Learning and Embeddings
+sentence-transformers>=2.2.0,<3.0.0
+torch>=2.0.0,<3.0.0
+numpy>=1.24.0,<2.0.0
+transformers>=4.30.0,<5.0.0
+
+# Web scraping
+aiohttp>=3.9.0,<4.0.0
+beautifulsoup4>=4.12.0,<5.0.0
+requests>=2.31.0,<3.0.0
+lxml>=4.9.0,<5.0.0
+
+# Text processing
+nltk>=3.8.0,<4.0.0
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
+click>=8.1.0,<9.0.0
+
+# Development and testing
+pytest>=7.4.0,<8.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+pytest-cov>=4.1.0,<5.0.0
+httpx>=0.25.0,<1.0.0
+
+# Optional: for better performance
+orjson>=3.9.0,<4.0.0
