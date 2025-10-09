@@ -100,6 +100,11 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
                         logger.debug(f"[Job {job_id}] Generating embedding for page_id={page_id}, chunk_number={chunk.chunk_number}")
                         emb_res = await embedding_service.generate_embedding(chunk.content)
                         logger.debug(f"[Job {job_id}] Generated embedding (dim={len(emb_res.embedding)}) for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                        # Log whether embedding is actual or fallback zero vector
+                        if all(v == 0.0 for v in emb_res.embedding):
+                            logger.warning(f"[Job {job_id}] Embedding fallback zero vector for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                        else:
+                            logger.info(f"[Job {job_id}] Embedding created for page_id={page_id}, chunk_number={chunk.chunk_number}")
                         # Insert chunk into database with embedding
                         chunk_query = text("""
                             INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, embedding, metadata, created_at)
