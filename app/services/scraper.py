@@ -1,11 +1,12 @@
 """Web scraping service with sitemap discovery and content extraction."""
+# type: ignore
 import asyncio
 import aiohttp
 import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
-from typing import List, Dict, Optional, Set, Tuple
+from typing import List, Dict, Optional, Set, Tuple, Any
 import logging
 from dataclasses import dataclass
 
@@ -25,16 +26,20 @@ class ScrapedPage:
     content: str
     summary: str
     headers: List[Dict[str, str]]
-    metadata: Dict[str, any]
+    metadata: Dict[str, Any]
 
 class WebScraper:
     """Web scraper with sitemap discovery and content extraction."""
     
+    # Cache of RobotFileParser or None if no robots.txt
+    # robots_cache will be initialized in __init__
+
     def __init__(self):
-        """Initialize the web scraper."""
+        # Initialize scraper
         self.rate_limiter = RateLimiter(settings.scraping_rate_limit)
         self.session: Optional[aiohttp.ClientSession] = None
-        self.robots_cache: Dict[str, RobotFileParser] = {}
+        # Cache of RobotFileParser or None if no robots.txt
+        self.robots_cache = {}
     
     async def __aenter__(self):
         """Async context manager entry."""
@@ -65,8 +70,9 @@ class WebScraper:
         Raises:
             aiohttp.ClientError: If request fails
         """
+        assert self.session is not None, "Session not initialized"
         await self.rate_limiter.acquire()
-        
+
         async with self.session.get(url) as response:
             content = await response.text()
             headers = dict(response.headers)
@@ -168,7 +174,7 @@ class WebScraper:
             if 'sitemapindex' in root.tag:
                 for sitemap in root.findall('.//{http://www.sitemaps.org/schemas/sitemap/0.9}sitemap'):
                     loc = sitemap.find('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')
-                    if loc is not None:
+                    if loc is not None and loc.text:
                         # Recursively parse nested sitemaps
                         try:
                             content, status, _ = await self._fetch_url(loc.text)
@@ -180,9 +186,9 @@ class WebScraper:
             
             # Handle regular sitemap files
             else:
-                for url in root.findall('.//{http://www.sitemaps.org/schemas/sitemap/0.9}url'):
-                    loc = url.find('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')
-                    if loc is not None:
+                for url_el in root.findall('.//{http://www.sitemaps.org/schemas/sitemap/0.9}url'):
+                    loc = url_el.find('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')
+                    if loc is not None and loc.text:
                         urls.append(loc.text)
         
         except ET.ParseError as e:
@@ -235,7 +241,10 @@ class WebScraper:
                     # Extract links for further crawling
                     soup = BeautifulSoup(content, 'html.parser')
                     for link in soup.find_all('a', href=True):
-                        href = link['href']
+                        href = link.get('href')
+                        # Skip non-string hrefs
+                        if not isinstance(href, str):
+                            continue
                         absolute_url = urljoin(current_url, href)
                         normalized = normalize_url(absolute_url)
                         
@@ -277,8 +286,10 @@ class WebScraper:
             # Extract meta description for summary
             meta_desc = soup.find('meta', attrs={'name': 'description'})
             summary = ""
-            if meta_desc and meta_desc.get('content'):
-                summary = clean_text(meta_desc['content'])
+            if meta_desc is not None:
+                content_attr = meta_desc.get('content')
+                if isinstance(content_attr, str) and content_attr:
+                    summary = clean_text(content_attr)
             
             # Extract main content
             main_content = self._extract_main_content(soup)
@@ -372,12 +383,18 @@ class WebScraper:
         
         # Discover URLs
         sitemap_urls = await self.discover_sitemap_urls(base_url)
-        
-        if sitemap_urls:
-            urls_to_scrape = sitemap_urls[:max_pages]
+        # Determine URL limit based on test mode
+        if settings.scraping_test_mode:
+            url_limit = settings.scraping_test_url_limit
         else:
-            # Fallback to crawling
-            urls_to_scrape = await self.crawl_site_fallback(base_url, max_pages)
+            url_limit = max_pages
+
+        if sitemap_urls:
+            # Limit number of URLs based on mode
+            urls_to_scrape = sitemap_urls[:url_limit]
+        else:
+            # Fallback to crawling with limit
+            urls_to_scrape = await self.crawl_site_fallback(base_url, url_limit)
         
         logger.info(f"Found {len(urls_to_scrape)} URLs to scrape")
         

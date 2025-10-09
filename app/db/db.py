@@ -50,8 +50,7 @@ def init_db():
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
             conn.commit()
             logger.info("Database extensions enabled successfully")
-            
-        # Create all tables
+        # Create any tables defined in ORM metadata (if applicable)
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
         

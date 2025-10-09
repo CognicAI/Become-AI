@@ -1,4 +1,6 @@
 """Configuration management for the RAG system."""
+# pyright: reportCallIssue=false
+# pyright: reportGeneralTypeIssues=false
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
@@ -69,6 +71,17 @@ class Settings(BaseSettings):
         default="BecomeAI-RAG-Bot/1.0 (+https://github.com/becomeai/rag-system)",
         env="SCRAPING_USER_AGENT",
         description="User agent string for web scraping"
+    )
+    # Test mode configuration for scraping: limit URLs in test mode
+    scraping_test_mode: bool = Field(
+        default=False,
+        env="SCRAPING_TEST_MODE",
+        description="Enable test mode to limit number of pages scraped"
+    )
+    scraping_test_url_limit: int = Field(
+        default=5,
+        env="SCRAPING_TEST_URL_LIMIT",
+        description="Maximum number of URLs to scrape in test mode"
     )
     
     # Chunking settings
