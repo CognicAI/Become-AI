@@ -327,3 +327,106 @@ async def list_scrape_jobs():
             for job_id, job in job_tracker.items()
         ]
     }
+ 
+@router.get("/failed/{site_id}")
+async def list_failed_urls(site_id: int, db: Session = Depends(get_db)):
+    """List all URLs that failed to scrape for a given site."""
+    result = db.execute(
+        text("SELECT url FROM failed_pages WHERE site_id = :site_id"),
+        {"site_id": site_id}
+    ).fetchall()
+    urls = [row[0] for row in result]
+    return {"failed_urls": urls}
+
+@router.post("/failed/{site_id}/rescrape")
+async def retry_failed_urls(site_id: int, db: Session = Depends(get_db)):
+    """Retry scraping all failed URLs for the given site."""
+    # Fetch fail records with IDs
+    rows = db.execute(
+        text("SELECT id, url FROM failed_pages WHERE site_id = :site_id"),
+        {"site_id": site_id}
+    ).fetchall()
+    if not rows:
+        return {"message": "No failed URLs to retry"}
+    scraper = WebScraper()
+    chunker = ContentChunker()
+    retried = []
+    async with scraper:
+        for fail_id, url in rows:
+            page = await scraper.scrape_page(url)
+            if not page:
+                continue
+            # Upsert page record
+            page_query = text("""
+                INSERT INTO site_pages (site_id, url, title, summary, content, metadata, scraped_at)
+                VALUES (:site_id, :url, :title, :summary, :content, :metadata, :scraped_at)
+                ON CONFLICT (site_id, url) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    summary = EXCLUDED.summary,
+                    content = EXCLUDED.content,
+                    metadata = EXCLUDED.metadata,
+                    scraped_at = EXCLUDED.scraped_at
+                RETURNING id
+            """
+            )
+            metadata_json = json.dumps(page.metadata) if page.metadata else '{}'
+            result = db.execute(page_query, {
+                'site_id': site_id,
+                'url': page.url,
+                'title': page.title,
+                'summary': page.summary,
+                'content': page.content,
+                'metadata': metadata_json,
+                'scraped_at': get_current_timestamp()
+            })
+            row = result.fetchone()
+            if not row:
+                continue
+            page_id = row[0]
+            # Chunk content
+            chunks = chunker.chunk_content(
+                content=page.content,
+                title=page.title,
+                headers=page.headers,
+                metadata=page.metadata
+            )
+            for chunk in chunks:
+                emb_res = await embedding_service.generate_embedding(chunk.content)
+                # Insert chunk
+                chunk_query = text("""
+                    INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, metadata, created_at)
+                    VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :metadata, :created_at)
+                    RETURNING id
+                """
+                )
+                meta_js = json.dumps(chunk.metadata) if chunk.metadata else '{}'
+                ch_res = db.execute(chunk_query, {
+                    'page_id': page_id,
+                    'chunk_number': chunk.chunk_number,
+                    'title': chunk.title,
+                    'summary': chunk.summary,
+                    'content': chunk.content,
+                    'token_count': chunk.token_count,
+                    'metadata': meta_js,
+                    'created_at': get_current_timestamp()
+                })
+                ch_row = ch_res.fetchone()
+                if ch_row:
+                    chunk_id = ch_row[0]
+                    # Insert embedding
+                    embed_q = text("""
+                        INSERT INTO embeddings (chunk_id, model_name, embedding, created_at)
+                        VALUES (:chunk_id, :model_name, :embedding, :created_at)
+                    """
+                    )
+                    db.execute(embed_q, {
+                        'chunk_id': chunk_id,
+                        'model_name': emb_res.model_name,
+                        'embedding': emb_res.embedding,
+                        'created_at': get_current_timestamp()
+                    })
+            # Remove from failed_pages
+            db.execute(text("DELETE FROM failed_pages WHERE id = :id"), {"id": fail_id})
+            retried.append(url)
+    db.commit()
+    return {"retried_urls": retried}
