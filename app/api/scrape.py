@@ -39,136 +39,173 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
         
         # Start scraping
         job_tracker[job_id].current_task = "Discovering pages"
-        
         async with WebScraper() as scraper:
-            # Scrape the site
-            scraped_pages = await scraper.scrape_site(base_url, max_pages=1000)
-            
-            if not scraped_pages:
-                job_tracker[job_id].status = "failed"
-                job_tracker[job_id].error_message = "No pages found to scrape"
-                return
-            
-            job_tracker[job_id].pages_total = len(scraped_pages)
-            job_tracker[job_id].current_task = "Processing pages"
-            
-            # Process pages in database
-            from ..db.db import SessionLocal
-            db = SessionLocal()
-            
-            try:
-                for i, page in enumerate(scraped_pages):
-                    # Insert page into database with JSON-serialized metadata
-                    logger.debug(f"[Job {job_id}] Inserting page into DB: {page.url}")
-                    page_query = text("""
-                    INSERT INTO site_pages (site_id, url, title, summary, content, metadata, scraped_at)
-                    VALUES (:site_id, :url, :title, :summary, :content, :metadata, :scraped_at)
-                    ON CONFLICT (site_id, url) DO UPDATE SET
-                        title = EXCLUDED.title,
-                        summary = EXCLUDED.summary,
-                        content = EXCLUDED.content,
-                        metadata = EXCLUDED.metadata,
-                        scraped_at = EXCLUDED.scraped_at
-                    RETURNING id
-                    """)
-                    
-                    # Convert metadata dict to JSON string for PostgreSQL JSONB
-                    metadata_json = json.dumps(page.metadata) if page.metadata else '{}'
-
-                    page_result = db.execute(page_query, {
+            # Discover URLs to scrape (manual) to track failures
+            sitemap_urls = await scraper.discover_sitemap_urls(base_url)
+            if settings.scraping_test_mode:
+                url_limit = settings.scraping_test_url_limit
+            else:
+                url_limit = 1000
+            if sitemap_urls:
+                urls_to_scrape = sitemap_urls[:url_limit]
+            else:
+                urls_to_scrape = await scraper.crawl_site_fallback(base_url, url_limit)
+            logger.info(f"[Job {job_id}] Found {len(urls_to_scrape)} URLs to scrape")
+            scraped_pages = []
+            for i, url in enumerate(urls_to_scrape):
+                logger.info(f"Scraping page {i+1}/{len(urls_to_scrape)}: {url}")
+                if not await scraper._check_robots_txt(base_url, url):
+                    logger.debug(f"Skipping URL blocked by robots.txt: {url}")
+                    continue
+                page = await scraper.scrape_page(url)
+                if page:
+                    scraped_pages.append(page)
+                else:
+                    logger.warning(f"Failed to scrape URL: {url}")
+            # Identify and record failed URLs
+            failed_urls = [u for u in urls_to_scrape if u not in {p.url for p in scraped_pages}]
+            if failed_urls:
+                from ..db.db import SessionLocal
+                db_fail = SessionLocal()
+                fail_query = text("""
+                    INSERT INTO failed_pages (site_id, url, error_message, attempted_at)
+                    VALUES (:site_id, :url, :error_message, :attempted_at)
+                """)
+                for failed_url in failed_urls:
+                    db_fail.execute(fail_query, {
                         'site_id': site_id,
-                        'url': page.url,
-                        'title': page.title,
-                        'summary': page.summary,
-                        'content': page.content,
-                        'metadata': metadata_json,  # ✅ Fixed: JSON string instead of dict
-                        'scraped_at': get_current_timestamp()
+                        'url': failed_url,
+                        'error_message': 'Scraping failed',
+                        'attempted_at': get_current_timestamp()
                     })
-                    
-                    page_row = page_result.fetchone()
-                    if page_row:
-                        page_id = page_row[0]
-                        logger.debug(f"[Job {job_id}] Stored page '{page.url}' in site_pages with page_id={page_id}")
+                db_fail.commit()
+            
+            
+        if not scraped_pages:
+            job_tracker[job_id].status = "failed"
+            job_tracker[job_id].error_message = "No pages found to scrape"
+            return
+            
+        job_tracker[job_id].pages_total = len(scraped_pages)
+        job_tracker[job_id].current_task = "Processing pages"
+        
+        # Process pages in database
+        from ..db.db import SessionLocal
+        db = SessionLocal()
+        
+        try:
+            for i, page in enumerate(scraped_pages):
+                # Insert page into database with JSON-serialized metadata
+                logger.debug(f"[Job {job_id}] Inserting page into DB: {page.url}")
+                page_query = text("""
+                INSERT INTO site_pages (site_id, url, title, summary, content, metadata, scraped_at)
+                VALUES (:site_id, :url, :title, :summary, :content, :metadata, :scraped_at)
+                ON CONFLICT (site_id, url) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    summary = EXCLUDED.summary,
+                    content = EXCLUDED.content,
+                    metadata = EXCLUDED.metadata,
+                    scraped_at = EXCLUDED.scraped_at
+                RETURNING id
+                """)
+                
+                # Convert metadata dict to JSON string for PostgreSQL JSONB
+                metadata_json = json.dumps(page.metadata) if page.metadata else '{}'
+
+                page_result = db.execute(page_query, {
+                    'site_id': site_id,
+                    'url': page.url,
+                    'title': page.title,
+                    'summary': page.summary,
+                    'content': page.content,
+                    'metadata': metadata_json,  # ✅ Fixed: JSON string instead of dict
+                    'scraped_at': get_current_timestamp()
+                })
+                
+                page_row = page_result.fetchone()
+                if page_row:
+                    page_id = page_row[0]
+                    logger.debug(f"[Job {job_id}] Stored page '{page.url}' in site_pages with page_id={page_id}")
+                else:
+                    logger.error(f"Failed to insert page: {page.url}")
+                    continue
+                
+                # Chunk and embed content for this page, streaming per chunk
+                chunks = chunker.chunk_content(
+                    content=page.content,
+                    title=page.title,
+                    headers=page.headers,
+                    metadata=page.metadata
+                )
+                logger.info(f"[Job {job_id}] Created {len(chunks)} chunks for URL: {page.url}")
+                for chunk in chunks:
+                    # Generate embedding for this chunk
+                    logger.debug(f"[Job {job_id}] Generating embedding for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                    emb_res = await embedding_service.generate_embedding(chunk.content)
+                    logger.debug(f"[Job {job_id}] Generated embedding (dim={len(emb_res.embedding)}) for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                    # Log whether embedding is actual or fallback zero vector
+                    if all(v == 0.0 for v in emb_res.embedding):
+                        logger.warning(f"[Job {job_id}] Embedding fallback zero vector for page_id={page_id}, chunk_number={chunk.chunk_number}")
                     else:
-                        logger.error(f"Failed to insert page: {page.url}")
-                        continue
-                    
-                    # Chunk and embed content for this page, streaming per chunk
-                    chunks = chunker.chunk_content(
-                        content=page.content,
-                        title=page.title,
-                        headers=page.headers,
-                        metadata=page.metadata
-                    )
-                    logger.info(f"[Job {job_id}] Created {len(chunks)} chunks for URL: {page.url}")
-                    for chunk in chunks:
-                        # Generate embedding for this chunk
-                        logger.debug(f"[Job {job_id}] Generating embedding for page_id={page_id}, chunk_number={chunk.chunk_number}")
-                        emb_res = await embedding_service.generate_embedding(chunk.content)
-                        logger.debug(f"[Job {job_id}] Generated embedding (dim={len(emb_res.embedding)}) for page_id={page_id}, chunk_number={chunk.chunk_number}")
-                        # Log whether embedding is actual or fallback zero vector
-                        if all(v == 0.0 for v in emb_res.embedding):
-                            logger.warning(f"[Job {job_id}] Embedding fallback zero vector for page_id={page_id}, chunk_number={chunk.chunk_number}")
-                        else:
-                            logger.info(f"[Job {job_id}] Embedding created for page_id={page_id}, chunk_number={chunk.chunk_number}")
-                        # Insert chunk record (without embedding) into page_chunks and return its id
-                        chunk_query = text("""
-                            INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, metadata, created_at)
-                            VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :metadata, :created_at)
-                            RETURNING id
+                        logger.info(f"[Job {job_id}] Embedding created for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                    # Insert chunk record (without embedding) into page_chunks and return its id
+                    chunk_query = text("""
+                        INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, metadata, created_at)
+                        VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :metadata, :created_at)
+                        RETURNING id
+                    """ )
+                    metadata_json = json.dumps(chunk.metadata) if chunk.metadata else '{}'
+                    logger.debug(f"[Job {job_id}] Inserting chunk {chunk.chunk_number} into page_chunks for page_id={page_id}")
+                    # Execute chunk insert and capture new chunk_id
+                    chunk_result = db.execute(chunk_query, {
+                        'page_id': page_id,
+                        'chunk_number': chunk.chunk_number,
+                        'title': chunk.title,
+                        'summary': chunk.summary,
+                        'content': chunk.content,
+                        'token_count': chunk.token_count,
+                        'metadata': metadata_json,
+                        'created_at': get_current_timestamp()
+                    })
+                    chunk_row = chunk_result.fetchone()
+                    if chunk_row:
+                        chunk_id = chunk_row[0]
+                        # Insert embedding into separate embeddings table
+                        embed_query = text("""
+                            INSERT INTO embeddings (chunk_id, model_name, embedding, created_at)
+                            VALUES (:chunk_id, :model_name, :embedding, :created_at)
                         """ )
-                        metadata_json = json.dumps(chunk.metadata) if chunk.metadata else '{}'
-                        logger.debug(f"[Job {job_id}] Inserting chunk {chunk.chunk_number} into page_chunks for page_id={page_id}")
-                        # Execute chunk insert and capture new chunk_id
-                        chunk_result = db.execute(chunk_query, {
-                            'page_id': page_id,
-                            'chunk_number': chunk.chunk_number,
-                            'title': chunk.title,
-                            'summary': chunk.summary,
-                            'content': chunk.content,
-                            'token_count': chunk.token_count,
-                            'metadata': metadata_json,
+                        db.execute(embed_query, {
+                            'chunk_id': chunk_id,
+                            'model_name': emb_res.model_name,
+                            'embedding': emb_res.embedding,
                             'created_at': get_current_timestamp()
                         })
-                        chunk_row = chunk_result.fetchone()
-                        if chunk_row:
-                            chunk_id = chunk_row[0]
-                            # Insert embedding into separate embeddings table
-                            embed_query = text("""
-                                INSERT INTO embeddings (chunk_id, model_name, embedding, created_at)
-                                VALUES (:chunk_id, :model_name, :embedding, :created_at)
-                            """ )
-                            db.execute(embed_query, {
-                                'chunk_id': chunk_id,
-                                'model_name': emb_res.model_name,
-                                'embedding': emb_res.embedding,
-                                'created_at': get_current_timestamp()
-                            })
-                            logger.debug(f"Inserted embedding for chunk_id={chunk_id}")
-                        else:
-                            logger.error(f"Failed to insert chunk to page_chunks for page: {page.title}")
-                    
-                    # Update progress
-                    job_tracker[job_id].pages_processed = i + 1
-                    job_tracker[job_id].progress = (i + 1) / len(scraped_pages) * 100
-                    job_tracker[job_id].current_task = f"Processing page {i+1}/{len(scraped_pages)}: {page.title[:50]}..."
+                        logger.debug(f"Inserted embedding for chunk_id={chunk_id}")
+                    else:
+                        logger.error(f"Failed to insert chunk to page_chunks for page: {page.title}")
                 
-                db.commit()
-                logger.info(f"Successfully processed {len(scraped_pages)} pages")
-                
-                # Mark job as complete
-                job_tracker[job_id].status = "completed" 
-                job_tracker[job_id].progress = 100.0
-                job_tracker[job_id].current_task = "Completed"
-                job_tracker[job_id].completed_at = get_current_timestamp()
-                
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Database error processing pages: {e}")
-                job_tracker[job_id].status = "failed"
-                job_tracker[job_id].error_message = f"Database error: {str(e)}"
-            finally:
-                db.close()
+                # Update progress
+                job_tracker[job_id].pages_processed = i + 1
+                job_tracker[job_id].progress = (i + 1) / len(scraped_pages) * 100
+                job_tracker[job_id].current_task = f"Processing page {i+1}/{len(scraped_pages)}: {page.title[:50]}..."
+            
+            db.commit()
+            logger.info(f"Successfully processed {len(scraped_pages)} pages")
+            
+            # Mark job as complete
+            job_tracker[job_id].status = "completed" 
+            job_tracker[job_id].progress = 100.0
+            job_tracker[job_id].current_task = "Completed"
+            job_tracker[job_id].completed_at = get_current_timestamp()
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Database error processing pages: {e}")
+            job_tracker[job_id].status = "failed"
+            job_tracker[job_id].error_message = f"Database error: {str(e)}"
+        finally:
+            db.close()
                 
     except Exception as e:
         logger.error(f"Scraping job {job_id} failed: {e}")
