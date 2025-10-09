@@ -19,7 +19,7 @@ from ..utils.config import settings
 logger = logging.getLogger(__name__)
 
 # Create API router
-router = APIRouter()
+router = APIRouter(prefix="/scrape", tags=["scrape"])
 
 # Job tracking
 job_tracker: Dict[str, JobStatus] = {}
@@ -70,7 +70,10 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
                 fail_query = text("""
                     INSERT INTO failed_pages (site_id, url, error_message, attempted_at)
                     VALUES (:site_id, :url, :error_message, :attempted_at)
-                """)
+                    ON CONFLICT (site_id, url) DO UPDATE SET
+                        error_message = EXCLUDED.error_message,
+                        attempted_at = EXCLUDED.attempted_at
+                """ )
                 for failed_url in failed_urls:
                     db_fail.execute(fail_query, {
                         'site_id': site_id,
@@ -152,6 +155,13 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
                     chunk_query = text("""
                         INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, metadata, created_at)
                         VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :metadata, :created_at)
+                        ON CONFLICT (page_id, chunk_number) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            summary = EXCLUDED.summary,
+                            content = EXCLUDED.content,
+                            token_count = EXCLUDED.token_count,
+                            metadata = EXCLUDED.metadata,
+                            created_at = EXCLUDED.created_at
                         RETURNING id
                     """ )
                     metadata_json = json.dumps(chunk.metadata) if chunk.metadata else '{}'
@@ -174,6 +184,9 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
                         embed_query = text("""
                             INSERT INTO embeddings (chunk_id, model_name, embedding, created_at)
                             VALUES (:chunk_id, :model_name, :embedding, :created_at)
+                            ON CONFLICT (chunk_id, model_name) DO UPDATE SET
+                                embedding = EXCLUDED.embedding,
+                                created_at = EXCLUDED.created_at
                         """ )
                         db.execute(embed_query, {
                             'chunk_id': chunk_id,
@@ -396,6 +409,13 @@ async def retry_failed_urls(site_id: int, db: Session = Depends(get_db)):
                 chunk_query = text("""
                     INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, metadata, created_at)
                     VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :metadata, :created_at)
+                    ON CONFLICT (page_id, chunk_number) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        summary = EXCLUDED.summary,
+                        content = EXCLUDED.content,
+                        token_count = EXCLUDED.token_count,
+                        metadata = EXCLUDED.metadata,
+                        created_at = EXCLUDED.created_at
                     RETURNING id
                 """
                 )
@@ -417,6 +437,9 @@ async def retry_failed_urls(site_id: int, db: Session = Depends(get_db)):
                     embed_q = text("""
                         INSERT INTO embeddings (chunk_id, model_name, embedding, created_at)
                         VALUES (:chunk_id, :model_name, :embedding, :created_at)
+                        ON CONFLICT (chunk_id, model_name) DO UPDATE SET
+                            embedding = EXCLUDED.embedding,
+                            created_at = EXCLUDED.created_at
                     """
                     )
                     db.execute(embed_q, {

@@ -33,7 +33,8 @@ CREATE TABLE page_chunks (
     token_count INT,
 --    embedding VECTOR(768), -- For OpenAI/Nomic/Gemma embeddings
     metadata JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (page_id, chunk_number)
 );
 
 -- 4️⃣ Embeddings Table (Optional — if you separate vectors)
@@ -42,7 +43,8 @@ CREATE TABLE embeddings (
     chunk_id BIGINT REFERENCES page_chunks(id) ON DELETE CASCADE,
     model_name TEXT NOT NULL,
     embedding VECTOR(768),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (chunk_id, model_name)
 );
 -- 5️⃣ Failed Pages (record URLs that could not be scraped)
 CREATE TABLE failed_pages (
@@ -50,5 +52,6 @@ CREATE TABLE failed_pages (
     site_id INTEGER REFERENCES sites(id) ON DELETE CASCADE,
     url TEXT NOT NULL,
     error_message TEXT,
-    attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (site_id, url)
 );
