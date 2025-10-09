@@ -1,9 +1,8 @@
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- 1️⃣ Websites Table
 CREATE TABLE sites (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     base_url TEXT NOT NULL UNIQUE,
     description TEXT,
@@ -13,7 +12,7 @@ CREATE TABLE sites (
 -- 2️⃣ Site Pages (Scraped Pages)
 CREATE TABLE site_pages (
     id BIGSERIAL PRIMARY KEY,
-    site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
+    site_id INTEGER REFERENCES sites(id) ON DELETE CASCADE,
     url TEXT NOT NULL,
     title TEXT NOT NULL,
     summary TEXT,

@@ -1,6 +1,7 @@
 """Content chunking and tokenization service."""
+# type: ignore
 import re
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 import logging
 from dataclasses import dataclass
 
@@ -17,7 +18,7 @@ class ContentChunk:
     summary: Optional[str]
     content: str
     token_count: int
-    metadata: Dict[str, any]
+    metadata: Dict[str, Any]
 
 class TokenCounter:
     """Simple token counter for approximating token counts."""
@@ -52,11 +53,11 @@ class ContentChunker:
         self.chunk_overlap = settings.chunk_overlap
     
     def chunk_content(
-        self, 
-        content: str, 
-        title: str = "", 
-        headers: List[Dict[str, str]] = None,
-        metadata: Dict[str, any] = None
+        self,
+        content: str,
+        title: Optional[str] = None,
+        headers: Optional[List[Dict[str, str]]] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> List[ContentChunk]:
         """Chunk content into overlapping segments.
         
@@ -71,10 +72,11 @@ class ContentChunker:
         """
         if not content:
             return []
-        
+
+        # Initialize optional parameters
         headers = headers or []
         metadata = metadata or {}
-        
+
         logger.debug(f"Chunking content: {len(content)} characters, {len(headers)} headers")
         
         # Split content into sentences for better chunk boundaries
@@ -205,12 +207,12 @@ class ContentChunker:
         return " ".join(words[-overlap_words:])
     
     def _create_chunk(
-        self, 
-        chunk_number: int, 
-        content: str, 
-        title: str, 
-        headers: List[Dict[str, str]], 
-        metadata: Dict[str, any]
+        self,
+        chunk_number: int,
+        content: str,
+        title: Optional[str],
+        headers: List[Dict[str, str]],
+        metadata: Dict[str, Any]
     ) -> ContentChunk:
         """Create a ContentChunk object.
         
@@ -249,9 +251,9 @@ class ContentChunker:
         )
     
     def _generate_chunk_title(
-        self, 
-        content: str, 
-        page_title: str, 
+        self,
+        content: str,
+        page_title: Optional[str],
         headers: List[Dict[str, str]]
     ) -> Optional[str]:
         """Generate a title for the chunk.
@@ -300,12 +302,12 @@ class ContentChunker:
         return content
     
     def chunk_page_content(
-        self, 
-        url: str, 
-        title: str, 
-        content: str, 
-        headers: List[Dict[str, str]], 
-        page_metadata: Dict[str, any]
+        self,
+        url: str,
+        title: str,
+        content: str,
+        headers: List[Dict[str, str]],
+        page_metadata: Dict[str, Any]
     ) -> List[ContentChunk]:
         """Chunk content from a scraped page.
         
@@ -332,7 +334,7 @@ class ContentChunker:
             metadata=metadata
         )
     
-    def get_chunk_stats(self, chunks: List[ContentChunk]) -> Dict[str, any]:
+    def get_chunk_stats(self, chunks: List[ContentChunk]) -> Dict[str, Any]:
         """Get statistics about a list of chunks.
         
         Args:

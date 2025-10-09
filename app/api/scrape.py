@@ -1,6 +1,5 @@
 """API endpoints for web scraping operations."""
 import asyncio
-import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 import json
@@ -28,7 +27,7 @@ job_tracker: Dict[str, JobStatus] = {}
 # Initialize services
 embedding_service = EmbeddingService()
 
-async def process_scraping_job(job_id: str, base_url: str, site_id: str):
+async def process_scraping_job(job_id: str, base_url: str, site_id: int):
     """Background task to process scraping job."""
     try:
         logger.info(f"Starting scraping job {job_id} for site {base_url}")
@@ -60,17 +59,18 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: str):
             try:
                 for i, page in enumerate(scraped_pages):
                     # Insert page into database with JSON-serialized metadata
+                    logger.debug(f"[Job {job_id}] Inserting page into DB: {page.url}")
                     page_query = text("""
-                        INSERT INTO site_pages (site_id, url, title, summary, content, metadata, scraped_at)
-                        VALUES (:site_id, :url, :title, :summary, :content, :metadata, :scraped_at)
-                        RETURNING id
+                    INSERT INTO site_pages (site_id, url, title, summary, content, metadata, scraped_at)
+                    VALUES (:site_id, :url, :title, :summary, :content, :metadata, :scraped_at)
+                    RETURNING id
                     """)
                     
                     # Convert metadata dict to JSON string for PostgreSQL JSONB
                     metadata_json = json.dumps(page.metadata) if page.metadata else '{}'
-                    
+
                     page_result = db.execute(page_query, {
-                        'site_id': str(site_id),
+                        'site_id': site_id,
                         'url': page.url,
                         'title': page.title,
                         'summary': page.summary,
@@ -82,22 +82,43 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: str):
                     page_row = page_result.fetchone()
                     if page_row:
                         page_id = page_row[0]
+                        logger.debug(f"[Job {job_id}] Stored page '{page.url}' in site_pages with page_id={page_id}")
                     else:
                         logger.error(f"Failed to insert page: {page.url}")
                         continue
                     
-                    # Generate chunks for this page
+                    # Chunk and embed content for this page, streaming per chunk
                     chunks = chunker.chunk_content(
                         content=page.content,
                         title=page.title,
                         headers=page.headers,
                         metadata=page.metadata
                     )
-                    
-                    if chunks:
-                        # Generate embeddings for chunks  
-                        chunk_embeddings = await embedding_service.embed_chunks(chunks)
-                        logger.info(f"Generated embeddings for {len(chunk_embeddings)} chunks for page: {page.title}")
+                    logger.info(f"[Job {job_id}] Created {len(chunks)} chunks for URL: {page.url}")
+                    for chunk in chunks:
+                        # Generate embedding for this chunk
+                        logger.debug(f"[Job {job_id}] Generating embedding for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                        emb_res = await embedding_service.generate_embedding(chunk.content)
+                        logger.debug(f"[Job {job_id}] Generated embedding (dim={len(emb_res.embedding)}) for page_id={page_id}, chunk_number={chunk.chunk_number}")
+                        # Insert chunk into database with embedding
+                        chunk_query = text("""
+                            INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, embedding, metadata, created_at)
+                            VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :embedding, :metadata, :created_at)
+                        """)
+                        metadata_json = json.dumps(chunk.metadata) if chunk.metadata else '{}'
+                        logger.debug(f"[Job {job_id}] Inserting chunk {chunk.chunk_number} into page_chunks for page_id={page_id}")
+                        db.execute(chunk_query, {
+                            'page_id': page_id,
+                            'chunk_number': chunk.chunk_number,
+                            'title': chunk.title,
+                            'summary': chunk.summary,
+                            'content': chunk.content,
+                            'token_count': chunk.token_count,
+                            'embedding': emb_res.embedding,
+                            'metadata': metadata_json,
+                            'created_at': get_current_timestamp()
+                        })
+                        logger.debug(f"Inserted chunk {chunk.chunk_number} with embedding for page: {page.title}")
                     
                     # Update progress
                     job_tracker[job_id].pages_processed = i + 1
@@ -152,8 +173,8 @@ async def start_scraping(
         else:
             # Create new site record
             site_query = text("""
-                INSERT INTO sites (id, name, base_url, description, created_at)
-                VALUES (gen_random_uuid(), :name, :base_url, :description, :created_at)
+                INSERT INTO sites (name, base_url, description, created_at)
+                VALUES (:name, :base_url, :description, :created_at)
                 RETURNING id
             """)
             
@@ -180,7 +201,7 @@ async def start_scraping(
         # Initialize job tracking
         job_tracker[job_id] = JobStatus(
             job_id=job_id,
-            site_id=uuid.UUID(str(site_id)),
+            site_id=site_id,
             status="running",
             progress=0.0,
             pages_total=0,
@@ -190,14 +211,14 @@ async def start_scraping(
         )
         
         # Start background scraping task
-        background_tasks.add_task(process_scraping_job, job_id, base_url, str(site_id))
+        background_tasks.add_task(process_scraping_job, job_id, base_url, site_id)
         
         logger.info(f"Started scraping job {job_id} for site {base_url}")
         
         return ScrapeResponse(
             job_id=job_id,
             message=f"Scraping job started for {base_url}",
-            site_id=str(site_id)
+            site_id=site_id
         )
         
     except HTTPException:

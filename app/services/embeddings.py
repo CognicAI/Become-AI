@@ -1,7 +1,7 @@
 """Embedding generation and vector storage service using LM Studio."""
 import asyncio
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 import logging
 from dataclasses import dataclass
 import aiohttp
@@ -32,6 +32,7 @@ class EmbeddingService:
         self.embedding_endpoint = f"{self.lm_studio_url}/v1/embeddings"
         self._session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
+        self._initialized = False  # flag to prevent repeated initialization
     
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -43,39 +44,32 @@ class EmbeddingService:
     
     async def initialize(self):
         """Initialize the embedding service and test LM Studio connection."""
+        if self._initialized:
+            return
         logger.info(f"Initializing LM Studio embedding service: {self.lm_studio_url}")
-        
         try:
-            # Test connection to LM Studio
             session = await self.get_session()
             async with session.get(f"{self.lm_studio_url}/v1/models") as response:
                 if response.status == 200:
                     models = await response.json()
                     logger.info("✅ LM Studio connection successful")
-                    
                     # Log available models
-                    if models.get("data"):
-                        model_names = [model.get("id", "Unknown") for model in models["data"]]
-                        logger.info(f"Available models: {model_names}")
-                    
-                    # Check if our embedding model is available
-                    embedding_models = [m for m in models.get("data", []) 
-                                      if "embed" in m.get("id", "").lower() or 
-                                         "bge" in m.get("id", "").lower()]
-                    
-                    if embedding_models:
-                        logger.info(f"Embedding models found: {[m['id'] for m in embedding_models]}")
-                    else:
-                        logger.warning("⚠️  No embedding models detected in LM Studio")
-                        logger.warning("💡 Load an embedding model (like BAAI/bge-base-en-v1.5) in LM Studio")
+                    if data := models.get("data"):
+                        ids = [m.get("id", "Unknown") for m in data]
+                        logger.info(f"Available models: {ids}")
+                        # Filter embedding models
+                        embedding_models = [m for m in data if any(k in m.get("id", "").lower() for k in ("embed","bge"))]
+                        if embedding_models:
+                            logger.info(f"Embedding models found: {[m['id'] for m in embedding_models]}")
+                        else:
+                            logger.warning("No embedding models detected in LM Studio")
                 else:
                     logger.error(f"❌ LM Studio connection failed: {response.status}")
                     raise Exception(f"LM Studio not accessible at {self.lm_studio_url}")
-                    
         except Exception as e:
             logger.error(f"❌ Failed to initialize LM Studio embedding service: {e}")
-            logger.error("💡 Make sure LM Studio is running with an embedding model loaded")
             raise
+        self._initialized = True
     
     async def generate_embedding(self, text: str) -> EmbeddingResult:
         """Generate embedding for a single text.
@@ -89,8 +83,8 @@ class EmbeddingService:
         Raises:
             RuntimeError: If model is not initialized
         """
-        if not hasattr(self, 'model') or self.model is None:
-            await self.initialize()
+        # Ensure the embedding service is initialized
+        await self.initialize()
         
         if not text.strip():
             # Return zero vector for empty text
@@ -135,53 +129,47 @@ class EmbeddingService:
             )
     
     async def generate_embeddings_batch(self, texts: List[str]) -> List[EmbeddingResult]:
-        """Generate embeddings for multiple texts in batch.
-        
-        Args:
-            texts: List of texts to embed
-            
-        Returns:
-            List of EmbeddingResult objects
-        """
-        if not hasattr(self, 'model') or self.model is None:
-            await self.initialize()
-        
+        """Generate embeddings for multiple texts in batch using LM Studio API."""
+        # Ensure the embedding service is initialized
+        await self.initialize()
         if not texts:
             return []
-        
+
         logger.info(f"Generating embeddings for {len(texts)} texts")
-        
         try:
-            # Use LM Studio batch API
             session = await self.get_session()
             payload = {
                 "model": self.model_name,
                 "input": texts
             }
-            
             async with session.post(self.embedding_endpoint, json=payload) as response:
                 if response.status == 200:
                     result = await response.json()
-                    embedding_data = result["data"]
-                    
-                    results = []
-                    for i, item in enumerate(embedding_data):
-                        results.append(EmbeddingResult(
-                            text=texts[i],
-                            embedding=item["embedding"],
-                            model_name=self.model_name,
-                            dimension=len(item["embedding"])
-                        ))
-                    
-                    logger.info(f"Successfully generated {len(results)} embeddings")
+                    embeddings = result.get("data", [])
+                    results: List[EmbeddingResult] = []
+                    for i, text in enumerate(texts):
+                        vector = embeddings[i].get("embedding") if i < len(embeddings) else None
+                        if vector and isinstance(vector, list):
+                            dim = len(vector)
+                        else:
+                            logger.error(f"Invalid embedding for text index {i}")
+                            vector = [0.0] * self.dimension
+                            dim = self.dimension
+                        results.append(
+                            EmbeddingResult(
+                                text=text,
+                                embedding=vector,
+                                model_name=self.model_name,
+                                dimension=dim
+                            )
+                        )
                     return results
                 else:
                     logger.error(f"LM Studio batch API error: {response.status}")
                     raise Exception(f"Batch embedding generation failed: {response.status}")
-            
         except Exception as e:
-            logger.error(f"Failed to generate batch embeddings: {e}")
-            # Return zero vectors as fallback
+            logger.error(f"Failed to generate embeddings batch: {e}")
+            # Return zero vectors for each text as fallback
             return [
                 EmbeddingResult(
                     text=text,
@@ -191,38 +179,6 @@ class EmbeddingService:
                 )
                 for text in texts
             ]
-    
-    async def embed_chunks(self, chunks: List[ContentChunk]) -> List[Tuple[ContentChunk, EmbeddingResult]]:
-        """Generate embeddings for content chunks.
-        
-        Args:
-            chunks: List of ContentChunk objects
-            
-        Returns:
-            List of tuples (chunk, embedding_result)
-        """
-        if not chunks:
-            return []
-        
-        logger.info(f"Embedding {len(chunks)} chunks")
-        
-        # Prepare texts for embedding
-        texts = []
-        for chunk in chunks:
-            # Combine title and content for better embeddings
-            chunk_text = ""
-            if chunk.title:
-                chunk_text += f"Title: {chunk.title}\n"
-            chunk_text += chunk.content
-            texts.append(chunk_text)
-        
-        # Generate embeddings
-        embedding_results = await self.generate_embeddings_batch(texts)
-        
-        # Pair chunks with their embeddings
-        chunk_embeddings = list(zip(chunks, embedding_results))
-        
-        return chunk_embeddings
     
     async def search_similar_chunks(
         self, 
@@ -302,7 +258,7 @@ class EmbeddingService:
         normalized = embedding_array / norm
         return normalized.tolist()
     
-    async def get_embedding_stats(self, embeddings: List[List[float]]) -> Dict[str, float]:
+    async def get_embedding_stats(self, embeddings: List[List[float]]) -> Dict[str, Any]:
         """Get statistics about a collection of embeddings.
         
         Args:
@@ -332,10 +288,10 @@ class EmbeddingService:
             'min_magnitude': float(np.min(magnitudes)),
             'max_magnitude': float(np.max(magnitudes)),
             'avg_values': {
-                'mean': float(np.mean(embeddings_array)),
-                'std': float(np.std(embeddings_array)),
-                'min': float(np.min(embeddings_array)),
-                'max': float(np.max(embeddings_array))
+            'mean': float(np.mean(embeddings_array)),
+            'std': float(np.std(embeddings_array)),
+            'min': float(np.min(embeddings_array)),
+            'max': float(np.max(embeddings_array))
             }
                 }
 

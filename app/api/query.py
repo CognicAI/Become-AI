@@ -80,7 +80,7 @@ async def query_rag_system(
         
         chunks_result = db.execute(similarity_query, {
             'query_embedding': query_embedding,
-            'site_id': str(site_id),
+            'site_id': site_id,
             'max_chunks': request.max_chunks
         })
         
@@ -201,7 +201,7 @@ async def query_rag_system_stream(
             
             chunks_result = db.execute(similarity_query, {
                 'query_embedding': query_embedding,
-                'site_id': str(site_id),
+                'site_id': site_id,
                 'max_chunks': max_chunks
             })
             
@@ -264,7 +264,7 @@ async def query_rag_system_stream(
 
 @router.get("/similar-chunks")
 async def find_similar_chunks(
-    text: str,
+    input_text: str,
     site_base_url: str,
     max_chunks: int = 10,
     db: Session = Depends(get_db)
@@ -300,31 +300,31 @@ async def find_similar_chunks(
         await embedding_service.initialize()
         
         # Generate text embedding
-        text_embedding_result = await embedding_service.generate_embedding(text)
+        text_embedding_result = await embedding_service.generate_embedding(input_text)
         text_embedding = text_embedding_result.embedding
         
         # Search for similar chunks
         similarity_query = text("""
-            SELECT 
-                pc.id,
-                pc.title,
-                pc.summary,
-                pc.content,
-                pc.chunk_number,
-                pc.token_count,
-                sp.url,
-                sp.title as page_title,
-                (pc.embedding <=> :text_embedding::vector) as distance
-            FROM page_chunks pc
-            JOIN site_pages sp ON pc.page_id = sp.id
-            WHERE sp.site_id = :site_id
-            ORDER BY pc.embedding <=> :text_embedding::vector
-            LIMIT :max_chunks
+                    SELECT 
+                    pc.id,
+                    pc.title,
+                    pc.summary,
+                    pc.content,
+                    pc.chunk_number,
+                    pc.token_count,
+                    sp.url,
+                    sp.title as page_title,
+                    (pc.embedding <=> :text_embedding::vector) as distance
+                    FROM page_chunks pc
+                    JOIN site_pages sp ON pc.page_id = sp.id
+                    WHERE sp.site_id = :site_id
+                    ORDER BY pc.embedding <=> :text_embedding::vector
+                    LIMIT :max_chunks
         """)
         
         chunks_result = db.execute(similarity_query, {
             'text_embedding': text_embedding,
-            'site_id': str(site_id),
+            'site_id': site_id,
             'max_chunks': max_chunks
         })
         
@@ -347,7 +347,7 @@ async def find_similar_chunks(
             })
         
         return {
-            'query_text': text,
+            'query_text': input_text,
             'site_url': base_url,
             'total_chunks': len(similar_chunks),
             'chunks': similar_chunks

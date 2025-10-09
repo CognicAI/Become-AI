@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     
     # Chunking settings
     chunk_size: int = Field(
-        default=512,
+        default=400,
         env="CHUNK_SIZE",
         description="Size of text chunks in tokens"
     )

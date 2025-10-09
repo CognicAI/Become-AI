@@ -2,7 +2,7 @@
 from pydantic import BaseModel, HttpUrl, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from uuid import UUID
+### removed unnecessary UUID import; site_id is int
 
 # Request Models
 class ScrapeRequest(BaseModel):
@@ -21,7 +21,7 @@ class QueryRequest(BaseModel):
 class ScrapeResponse(BaseModel):
     """Response model for scrape initiation."""
     job_id: str = Field(..., description="Unique identifier for the scraping job")
-    site_id: UUID = Field(..., description="UUID of the created site record")
+    site_id: int = Field(..., description="Integer ID of the created site record")
     message: str = Field(..., description="Status message")
     
 class ScrapeStatusResponse(BaseModel):
@@ -59,7 +59,7 @@ class SiteCreate(BaseModel):
 
 class SitePageCreate(BaseModel):
     """Model for creating a new site page."""
-    site_id: UUID
+    site_id: int
     url: str
     title: str
     summary: Optional[str]
@@ -87,7 +87,7 @@ class EmbeddingCreate(BaseModel):
 class JobStatus(BaseModel):
     """Internal job status tracking."""
     job_id: str
-    site_id: UUID
+    site_id: int  # integer site_id from sites.id
     status: str  # 'pending', 'processing', 'completed', 'failed'
     progress: float = 0.0
     pages_processed: int = 0
