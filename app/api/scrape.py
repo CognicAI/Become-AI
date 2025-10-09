@@ -63,6 +63,12 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
                     page_query = text("""
                     INSERT INTO site_pages (site_id, url, title, summary, content, metadata, scraped_at)
                     VALUES (:site_id, :url, :title, :summary, :content, :metadata, :scraped_at)
+                    ON CONFLICT (site_id, url) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        summary = EXCLUDED.summary,
+                        content = EXCLUDED.content,
+                        metadata = EXCLUDED.metadata,
+                        scraped_at = EXCLUDED.scraped_at
                     RETURNING id
                     """)
                     
@@ -105,25 +111,42 @@ async def process_scraping_job(job_id: str, base_url: str, site_id: int):
                             logger.warning(f"[Job {job_id}] Embedding fallback zero vector for page_id={page_id}, chunk_number={chunk.chunk_number}")
                         else:
                             logger.info(f"[Job {job_id}] Embedding created for page_id={page_id}, chunk_number={chunk.chunk_number}")
-                        # Insert chunk into database with embedding
+                        # Insert chunk record (without embedding) into page_chunks and return its id
                         chunk_query = text("""
-                            INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, embedding, metadata, created_at)
-                            VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :embedding, :metadata, :created_at)
-                        """)
+                            INSERT INTO page_chunks (page_id, chunk_number, title, summary, content, token_count, metadata, created_at)
+                            VALUES (:page_id, :chunk_number, :title, :summary, :content, :token_count, :metadata, :created_at)
+                            RETURNING id
+                        """ )
                         metadata_json = json.dumps(chunk.metadata) if chunk.metadata else '{}'
                         logger.debug(f"[Job {job_id}] Inserting chunk {chunk.chunk_number} into page_chunks for page_id={page_id}")
-                        db.execute(chunk_query, {
+                        # Execute chunk insert and capture new chunk_id
+                        chunk_result = db.execute(chunk_query, {
                             'page_id': page_id,
                             'chunk_number': chunk.chunk_number,
                             'title': chunk.title,
                             'summary': chunk.summary,
                             'content': chunk.content,
                             'token_count': chunk.token_count,
-                            'embedding': emb_res.embedding,
                             'metadata': metadata_json,
                             'created_at': get_current_timestamp()
                         })
-                        logger.debug(f"Inserted chunk {chunk.chunk_number} with embedding for page: {page.title}")
+                        chunk_row = chunk_result.fetchone()
+                        if chunk_row:
+                            chunk_id = chunk_row[0]
+                            # Insert embedding into separate embeddings table
+                            embed_query = text("""
+                                INSERT INTO embeddings (chunk_id, model_name, embedding, created_at)
+                                VALUES (:chunk_id, :model_name, :embedding, :created_at)
+                            """ )
+                            db.execute(embed_query, {
+                                'chunk_id': chunk_id,
+                                'model_name': emb_res.model_name,
+                                'embedding': emb_res.embedding,
+                                'created_at': get_current_timestamp()
+                            })
+                            logger.debug(f"Inserted embedding for chunk_id={chunk_id}")
+                        else:
+                            logger.error(f"Failed to insert chunk to page_chunks for page: {page.title}")
                     
                     # Update progress
                     job_tracker[job_id].pages_processed = i + 1

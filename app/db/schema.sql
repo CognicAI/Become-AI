@@ -31,7 +31,7 @@ CREATE TABLE page_chunks (
     summary TEXT,
     content TEXT NOT NULL,
     token_count INT,
-    embedding VECTOR(768), -- For OpenAI/Nomic/Gemma embeddings
+--    embedding VECTOR(768), -- For OpenAI/Nomic/Gemma embeddings
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
