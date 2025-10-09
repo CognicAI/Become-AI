@@ -39,6 +39,7 @@ Context Length: 4096-8192
 2. Select your chat model (e.g., Phi-3 Mini)
 3. Click **Start Server**
 4. Verify at: http://localhost:1234
+5. In the **Server Settings**, disable model auto-unload or enable “Keep models loaded in memory” so that LM Studio does not evict your model between requests. This ensures faster subsequent calls.
 
 ### 5. Test Connection
 
