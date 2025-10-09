@@ -67,14 +67,15 @@ async def query_rag_system(
                 pc.title,
                 pc.content,
                 pc.chunk_number,
-                pc.embedding,
+                e.embedding,
                 sp.url,
-                sp.title as page_title,
-                (pc.embedding <=> :query_embedding::vector) as distance
+                sp.title AS page_title,
+                    (e.embedding <=> CAST(:query_embedding AS vector)) AS distance
             FROM page_chunks pc
+            JOIN embeddings e ON e.chunk_id = pc.id
             JOIN site_pages sp ON pc.page_id = sp.id
             WHERE sp.site_id = :site_id
-            ORDER BY pc.embedding <=> :query_embedding::vector
+                ORDER BY e.embedding <=> CAST(:query_embedding AS vector)
             LIMIT :max_chunks
         """)
         
@@ -188,14 +189,15 @@ async def query_rag_system_stream(
                     pc.title,
                     pc.content,
                     pc.chunk_number,
-                    pc.embedding,
+                    e.embedding,
                     sp.url,
-                    sp.title as page_title,
-                    (pc.embedding <=> :query_embedding::vector) as distance
+                    sp.title AS page_title,
+                        (e.embedding <=> CAST(:query_embedding AS vector)) AS distance
                 FROM page_chunks pc
+                JOIN embeddings e ON e.chunk_id = pc.id
                 JOIN site_pages sp ON pc.page_id = sp.id
                 WHERE sp.site_id = :site_id
-                ORDER BY pc.embedding <=> :query_embedding::vector
+                    ORDER BY e.embedding <=> CAST(:query_embedding AS vector)
                 LIMIT :max_chunks
             """)
             
@@ -305,23 +307,23 @@ async def find_similar_chunks(
         
         # Search for similar chunks
         similarity_query = text("""
-                    SELECT 
-                    pc.id,
-                    pc.title,
-                    pc.summary,
-                    pc.content,
-                    pc.chunk_number,
-                    pc.token_count,
-                    sp.url,
-                    sp.title as page_title,
-                    (pc.embedding <=> :text_embedding::vector) as distance
-                    FROM page_chunks pc
-                    JOIN site_pages sp ON pc.page_id = sp.id
-                    WHERE sp.site_id = :site_id
-                    ORDER BY pc.embedding <=> :text_embedding::vector
-                    LIMIT :max_chunks
+            SELECT 
+            pc.id,
+            pc.title,
+            pc.summary,
+            pc.content,
+            pc.chunk_number,
+            pc.token_count,
+            sp.url,
+            sp.title AS page_title,
+                (e.embedding <=> CAST(:text_embedding AS vector)) AS distance
+            FROM page_chunks pc
+            JOIN embeddings e ON e.chunk_id = pc.id
+            JOIN site_pages sp ON pc.page_id = sp.id
+            WHERE sp.site_id = :site_id
+            ORDER BY e.embedding <=> CAST(:text_embedding AS vector)
+            LIMIT :max_chunks
         """)
-        
         chunks_result = db.execute(similarity_query, {
             'text_embedding': text_embedding,
             'site_id': site_id,
@@ -329,30 +331,30 @@ async def find_similar_chunks(
         })
         
         chunks = chunks_result.fetchall()
-        
+            
         similar_chunks = []
         for chunk in chunks:
-            similarity_score = max(0.0, 1.0 - chunk[8])
+                similarity_score = max(0.0, 1.0 - chunk[8])
+                
+                similar_chunks.append({
+                    'chunk_id': chunk[0],
+                    'title': chunk[1],
+                    'summary': chunk[2],
+                    'content': chunk[3][:500] + '...' if len(chunk[3]) > 500 else chunk[3],
+                    'chunk_number': chunk[4],
+                    'token_count': chunk[5],
+                    'page_url': chunk[6],
+                    'page_title': chunk[7],
+                    'similarity_score': similarity_score
+                })
             
-            similar_chunks.append({
-                'chunk_id': chunk[0],
-                'title': chunk[1],
-                'summary': chunk[2],
-                'content': chunk[3][:500] + '...' if len(chunk[3]) > 500 else chunk[3],
-                'chunk_number': chunk[4],
-                'token_count': chunk[5],
-                'page_url': chunk[6],
-                'page_title': chunk[7],
-                'similarity_score': similarity_score
-            })
-        
         return {
-            'query_text': input_text,
-            'site_url': base_url,
-            'total_chunks': len(similar_chunks),
-            'chunks': similar_chunks
-        }
-        
+                'query_text': input_text,
+                'site_url': base_url,
+                'total_chunks': len(similar_chunks),
+                'chunks': similar_chunks
+            }
+            
     except HTTPException:
         raise
     except Exception as e:

@@ -70,7 +70,7 @@ class LLMService:
             url = f"{self.base_url}/v1/models"
             async with self.session.get(url) as response:
                 if response.status == 200:
-                    data = await response.json()
+                    data = await response.json() or {}
                     logger.info(f"LM Studio connection successful. Available models: {len(data.get('data', []))}")
                     return True
                 else:
@@ -120,6 +120,7 @@ class LLMService:
         
         try:
             async with self.session.post(url, json=payload) as response:
+                data = {}
                 if response.status != 200:
                     error_text = await response.text()
                     raise aiohttp.ClientError(f"LLM request failed: {response.status} - {error_text}")
@@ -141,16 +142,27 @@ class LLMService:
                             except json.JSONDecodeError:
                                 continue
                 else:
-                    data = await response.json()
-                    content = data['choices'][0]['message']['content']
+                    data = await response.json() or {}
+                    # Safely extract content
+                    choices = data.get('choices', [])
+                    if choices and isinstance(choices, list) and 'message' in choices[0]:
+                        content = choices[0]['message'].get('content', '')
+                    else:
+                        content = ''
                 
                 processing_time = (get_current_timestamp() - start_time).total_seconds()
-                
+                # Determine tokens_used and finish_reason for non-streaming responses
+                if stream:
+                    tokens = None
+                    finish = None
+                else:
+                    tokens = data.get('usage', {}).get('total_tokens')
+                    finish = data.get('choices', [{}])[0].get('finish_reason')
                 return LLMResponse(
                     content=content,
-                    tokens_used=data.get('usage', {}).get('total_tokens') if not stream else None,
+                    tokens_used=tokens,
                     model=self.model_name,
-                    finish_reason=data.get('choices', [{}])[0].get('finish_reason') if not stream else None,
+                    finish_reason=finish,
                     processing_time=processing_time
                 )
                 
