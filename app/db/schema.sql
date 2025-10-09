@@ -44,3 +44,11 @@ CREATE TABLE embeddings (
     embedding VECTOR(768),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- 5️⃣ Failed Pages (record URLs that could not be scraped)
+CREATE TABLE failed_pages (
+    id BIGSERIAL PRIMARY KEY,
+    site_id INTEGER REFERENCES sites(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    error_message TEXT,
+    attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
