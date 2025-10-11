@@ -16,6 +16,8 @@ class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question to ask about the content")
     site_base_url: HttpUrl = Field(..., description="Base URL of the site to query")
     max_chunks: Optional[int] = Field(5, ge=1, le=10, description="Maximum number of chunks to retrieve")
+    llm_source: str = Field('local', description="LLM source to use: 'local' or 'cloud'")
+    llm_model_name: Optional[str] = Field(None, description="Cloud LLM model name (when llm_source is 'cloud')")
 
 # Response Models
 class ScrapeResponse(BaseModel):

@@ -3,138 +3,253 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chatbot UI</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #343541;
-      font-family: Arial, sans-serif;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      color: #fff;
-    }
-    .chat-container {
-      width: 600px;
-      max-width: 90%;
-      height: 80vh;
-      display: flex;
-      flex-direction: column;
-      background: #202123;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    }
-    #chat-window {
-      flex: 1;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-    }
-    .message {
-      padding: 12px 16px;
-      margin: 8px 0;
-      border-radius: 20px;
-      max-width: 80%;
-      line-height: 1.4;
-      word-wrap: break-word;
-    }
-    .message.user {
-      background: #444654;
-      color: #fff;
-      align-self: flex-end;
-    }
-    .message.assistant {
-      background: #e9e9eb;
-      color: #000;
-      align-self: flex-start;
-    }
-    #input-form {
-      display: flex;
-      border-top: 1px solid #444654;
-    }
-    #user-input {
-      flex: 1;
-      padding: 12px;
-      border: none;
-      outline: none;
-      background: #343541;
-      color: #fff;
-      font-size: 16px;
-    }
-    #input-form button {
-      background: #10a37f;
-      border: none;
-      color: #fff;
-      padding: 0 24px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    #input-form button:hover {
-      background: #0d8266;
-    }
-  </style>
+  <meta name="description" content="Become AI - Intelligent RAG System for Website Question Answering">
+  <meta name="keywords" content="AI, RAG, question answering, LLM, chat, assistant">
+  <meta name="author" content="Become AI">
+  <title>Become AI - RAG Chat Assistant</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./static/css/main.css">
+  
+  <!-- Preload critical resources -->
+  <link rel="preload" href="./static/js/app.js" as="script">
+  
+  <!-- Theme detection script (inline to prevent FOUC) -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('rag_theme');
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      const theme = savedTheme === 'auto' || !savedTheme ? systemTheme : savedTheme;
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
 </head>
 <body>
-  <div class="chat-container">
-    <div id="chat-window"></div>
-    <form id="input-form">
-      <input type="text" id="site-base-url" placeholder="Site base URL (e.g. https://example.com)" autocomplete="off" style="flex:0.4; padding:12px; border:none; background:#343541; color:#fff; font-size:16px; margin-right:8px;" />
-      <input type="text" id="user-input" placeholder="Type your message..." autocomplete="off" />
-      <button type="submit">Send</button>
-    </form>
+  <!-- Skip to main content for accessibility -->
+  <a href="#main-content" class="sr-only skip-link">Skip to main content</a>
+  
+  <!-- Application Container -->
+  <div class="app-container" id="app">
+    <!-- Header -->
+    <header class="app-header" role="banner">
+      <div class="header-content">
+        <h1>
+          <span class="logo">🤖</span>
+          Become AI
+          <span class="tagline">RAG Assistant</span>
+        </h1>
+        <nav class="header-nav" role="navigation" aria-label="Main navigation">
+          <button type="button" class="btn btn-ghost btn-sm" id="theme-toggle" title="Toggle theme">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="help-toggle" title="Help">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="m9,9a3,3 0 1,1 6,0c0,2 -3,3 -3,3"></path>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="app-main" id="main-content" role="main">
+      <!-- Sidebar Configuration -->
+      <aside class="sidebar" role="complementary" aria-label="Configuration panel">
+        <div id="config-container"></div>
+        
+        <!-- Quick Stats -->
+        <div class="stats-panel" id="stats-panel">
+          <h4>Session Stats</h4>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-value" id="message-count">0</span>
+              <span class="stat-label">Messages</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="session-time">0m</span>
+              <span class="stat-label">Session</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="export-chat" title="Export chat history">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7,10 12,15 17,10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="clear-chat" title="Clear chat history">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3,6 5,6 21,6"></polyline>
+              <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+            </svg>
+            Clear
+          </button>
+        </div>
+      </aside>
+
+      <!-- Chat Area -->
+      <section class="main-content" aria-label="Chat interface">
+        <!-- Chat Messages -->
+        <div id="chat-container" role="log" aria-label="Chat messages" aria-live="polite"></div>
+        
+        <!-- Chat Input -->
+        <div id="input-container" role="region" aria-label="Message input"></div>
+      </section>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loading-overlay" role="status" aria-label="Loading">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Initializing AI Assistant...</p>
+      </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal-overlay hidden" id="help-modal" role="dialog" aria-labelledby="help-title" aria-modal="true">
+      <div class="modal-content">
+        <header class="modal-header">
+          <h2 id="help-title">Help & Shortcuts</h2>
+          <button type="button" class="modal-close" aria-label="Close help">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <section>
+            <h3>Getting Started</h3>
+            <ol>
+              <li>Enter a website URL in the configuration panel</li>
+              <li>Choose your LLM source (Local or Cloud)</li>
+              <li>Ask questions about the website content</li>
+            </ol>
+          </section>
+          
+          <section>
+            <h3>Keyboard Shortcuts</h3>
+            <dl class="shortcuts-list">
+              <dt><kbd>Ctrl</kbd> + <kbd>K</kbd></dt>
+              <dd>Focus message input</dd>
+              
+              <dt><kbd>Enter</kbd></dt>
+              <dd>Send message</dd>
+              
+              <dt><kbd>Shift</kbd> + <kbd>Enter</kbd></dt>
+              <dd>New line in message</dd>
+              
+              <dt><kbd>Escape</kbd></dt>
+              <dd>Cancel current operation or clear input</dd>
+              
+              <dt><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd></dt>
+              <dd>Clear chat history</dd>
+            </dl>
+          </section>
+          
+          <section>
+            <h3>Tips</h3>
+            <ul>
+              <li>Be specific in your questions for better results</li>
+              <li>The AI can reference multiple pages from the configured website</li>
+              <li>Use the cloud LLM for better performance with complex queries</li>
+              <li>Your chat history is saved locally in your browser</li>
+            </ul>
+          </section>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-primary" id="help-close">Got it!</button>
+        </footer>
+      </div>
+    </div>
   </div>
+
+  <!-- Error Boundary (will be replaced by app.js if initialization fails) -->
+  <noscript>
+    <div class="error-container">
+      <div class="error-content">
+        <h1>JavaScript Required</h1>
+        <p>This application requires JavaScript to function properly. Please enable JavaScript in your browser settings.</p>
+      </div>
+    </div>
+  </noscript>
+
+  <!-- Scripts -->
+  <script type="module" src="./static/js/app.js"></script>
+  
+  <!-- Additional UI enhancements script -->
   <script>
-    // FastAPI backend base URL
-    const API_BASE = "http://localhost:8000";
-    const chatWindow = document.getElementById('chat-window');
-    function appendMessage(role, text = '') {
-      const messageDiv = document.createElement('div');
-      messageDiv.classList.add('message', role === 'user' ? 'user' : 'assistant');
-      messageDiv.textContent = text;
-      chatWindow.appendChild(messageDiv);
-      chatWindow.scrollTop = chatWindow.scrollHeight;
-      return messageDiv;
-    }
-
-    document.getElementById('input-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const siteInput = document.getElementById('site-base-url');
-      const siteUrl = siteInput.value.trim();
-      if (!siteUrl) return alert('Please enter site base URL');
-      const input = document.getElementById('user-input');
-      const text = input.value.trim();
-      if (!text) return;
-      appendMessage('user', text);
-      input.value = '';
-
-      const assistantDiv = appendMessage('assistant', '');
-      // Open SSE connection to stream tokens
-      const source = new EventSource(`${API_BASE}/query/stream?question=${encodeURIComponent(text)}&site_base_url=${encodeURIComponent(siteUrl)}`);
-      source.onmessage = (event) => {
-        // Ignore non-JSON messages and completion signal
-        if (event.data === '[DONE]') {
-          source.close();
-          return;
+    // Simple theme toggle functionality (before app loads)
+    document.addEventListener('DOMContentLoaded', function() {
+      const themeToggle = document.getElementById('theme-toggle');
+      const helpToggle = document.getElementById('help-toggle');
+      const helpModal = document.getElementById('help-modal');
+      const helpClose = document.getElementById('help-close');
+      const modalClose = document.querySelector('.modal-close');
+      
+      // Theme toggle
+      if (themeToggle) {
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('rag_theme', newTheme);
+        });
+      }
+      
+      // Help modal
+      if (helpToggle && helpModal) {
+        helpToggle.addEventListener('click', function() {
+          helpModal.classList.remove('hidden');
+          document.body.style.overflow = 'hidden';
+        });
+      }
+      
+      function closeHelp() {
+        if (helpModal) {
+          helpModal.classList.add('hidden');
+          document.body.style.overflow = '';
         }
-        let payload;
-        try {
-          payload = JSON.parse(event.data);
-        } catch (e) {
-          return; // skip malformed messages
+      }
+      
+      if (helpClose) helpClose.addEventListener('click', closeHelp);
+      if (modalClose) modalClose.addEventListener('click', closeHelp);
+      
+      // Close modal on escape
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !helpModal.classList.contains('hidden')) {
+          closeHelp();
         }
-        // Only append token data as answer
-        if (payload.token) {
-          assistantDiv.textContent += payload.token;
-          chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-      };
-      source.onerror = () => {
-        source.close();
-      };
+      });
+      
+      // Close modal on overlay click
+      if (helpModal) {
+        helpModal.addEventListener('click', function(e) {
+          if (e.target === helpModal) {
+            closeHelp();
+          }
+        });
+      }
     });
   </script>
 </body>

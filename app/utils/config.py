@@ -55,6 +55,22 @@ class Settings(BaseSettings):
         env="LM_INFERENCE_FRAMEWORK",
         description="Inference framework for LLM (e.g., lmstudio, transformers)"
     )
+    # Cloud (Hugging Face) LLM settings
+    hf_api_url: str = Field(
+        default="https://router.huggingface.co/v1",
+        env="HF_API_URL",
+        description="Base URL for Hugging Face Inference Providers API"
+    )
+    hf_api_token: Optional[str] = Field(
+        default=None,
+        env="HF_API_TOKEN",
+        description="Access token for Hugging Face Inference API"
+    )
+    hf_default_model: str = Field(
+        default="deepseek-ai/DeepSeek-V3-0324",
+        env="HF_DEFAULT_MODEL",
+        description="Default Hugging Face model for cloud LLM (should be available on Inference Providers)"
+    )
     
     # Embedding settings
     embedding_model: str = Field(

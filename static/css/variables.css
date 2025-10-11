@@ -1,0 +1,85 @@
+/* CSS Variables - Design System */
+:root {
+  /* Colors */
+  --primary-bg: #1a1a1a;
+  --secondary-bg: #2d2d2d;
+  --accent-bg: #3a3a3a;
+  --primary-text: #ffffff;
+  --secondary-text: #b0b0b0;
+  --accent-text: #d1d1d1;
+  --border-color: #404040;
+  --accent-color: #0066cc;
+  --accent-hover: #0052a3;
+  --success-color: #10a37f;
+  --success-hover: #0d8266;
+  --warning-color: #ff6b35;
+  --error-color: #ff4444;
+  
+  /* User message colors */
+  --user-bg: #2d5aa0;
+  --user-text: #ffffff;
+  
+  /* Assistant message colors */
+  --assistant-bg: #f0f0f0;
+  --assistant-text: #1a1a1a;
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  
+  /* Typography */
+  --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --line-height: 1.5;
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease-in-out;
+  --transition-normal: 0.3s ease-in-out;
+  --transition-slow: 0.5s ease-in-out;
+  
+  /* Breakpoints */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] {
+  --primary-bg: #0a0a0a;
+  --secondary-bg: #1a1a1a;
+  --accent-bg: #2a2a2a;
+  --border-color: #333333;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --primary-bg: #ffffff;
+  --secondary-bg: #f8f9fa;
+  --accent-bg: #e9ecef;
+  --primary-text: #212529;
+  --secondary-text: #6c757d;
+  --accent-text: #495057;
+  --border-color: #dee2e6;
+  --user-bg: #007bff;
+  --assistant-bg: #e9ecef;
+  --assistant-text: #212529;
+}

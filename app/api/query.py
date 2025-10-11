@@ -13,6 +13,7 @@ from ..db.db import get_db
 from ..models import QueryRequest, QueryResponse, ChunkMetadata
 from ..services.embeddings import embedding_service
 from ..services.llm import llm_service, ChunkContext
+from ..services.cloud_llm import cloud_llm_service
 from ..utils.helpers import normalize_url, get_current_timestamp
 from ..utils.config import settings
 
@@ -119,9 +120,15 @@ async def query_rag_system(
                 similarity_score=similarity_score
             ))
         
-        # Generate answer using LLM
-        async with llm_service as llm:
-            llm_response = await llm.answer_question(request.question, chunk_contexts)
+        # Generate answer using chosen LLM source
+        prompt = llm_service.create_rag_prompt(request.question, chunk_contexts)
+        if request.llm_source == 'cloud':
+            model_name = request.llm_model_name or settings.hf_default_model
+            async with cloud_llm_service as cloud:
+                llm_response = await cloud.generate_response(prompt, model=model_name)
+        else:
+            async with llm_service as llm:
+                llm_response = await llm.answer_question(request.question, chunk_contexts)
         
         processing_time = (get_current_timestamp() - start_time).total_seconds()
         
@@ -144,6 +151,8 @@ async def query_rag_system_stream(
     question: str,
     site_base_url: str,
     max_chunks: int = 5,
+    llm_source: str = 'local',
+    llm_model_name: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Stream RAG system responses using Server-Sent Events.
@@ -268,13 +277,22 @@ async def query_rag_system_stream(
             logger.info(f"[stream] prepared for LLM streaming took {(now - prev_time).total_seconds():.3f}s")
             prev_time = now
             
-            # Stream the answer and log LLM generation time
+            # Generate and stream answer tokens
             llm_start = datetime.now()
-            async with llm_service as llm:
-                async for token in llm.answer_question_stream(question, chunk_contexts):
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+            prompt_text = llm_service.create_rag_prompt(question, chunk_contexts)
+            if llm_source == 'cloud':
+                model_name = llm_model_name or settings.hf_default_model
+                # Use streaming for cloud LLM
+                async with cloud_llm_service as cloud:
+                    async for token in cloud.generate_response_stream(prompt_text, model=model_name):
+                        if token:  # Only yield non-empty tokens
+                            yield f"data: {json.dumps({'token': token})}\n\n"
+            else:
+                async with llm_service as llm:
+                    async for token in llm.answer_question_stream(question, chunk_contexts):
+                        yield f"data: {json.dumps({'token': token})}\n\n"
             llm_end = datetime.now()
-            logger.info(f"[stream] LLM generation took {(llm_end - llm_start).total_seconds():.3f}s")
+            logger.info(f"[stream] LLM generation took {(llm_end - llm_start).total_seconds():.3f}s using {llm_source}")
             
             # Send completion signal
             yield f"data: {json.dumps({'status': 'completed'})}\n\n"
