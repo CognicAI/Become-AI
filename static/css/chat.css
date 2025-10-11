@@ -103,7 +103,8 @@
 /* Message content formatting */
 .message-content h1,
 .message-content h2,
-.message-content h3 {
+.message-content h3,
+.message-content h4 {
   margin: var(--spacing-md) 0 var(--spacing-sm) 0;
   font-weight: 600;
   color: inherit;
@@ -112,6 +113,7 @@
 .message-content h1 { font-size: 1.25em; }
 .message-content h2 { font-size: 1.15em; }
 .message-content h3 { font-size: 1.1em; }
+.message-content h4 { font-size: 1.05em; font-weight: 500; }
 
 .message-content p {
   margin: var(--spacing-sm) 0;
@@ -123,8 +125,14 @@
   padding-left: var(--spacing-lg);
 }
 
+.message-content ol {
+  margin: var(--spacing-sm) 0;
+  padding-left: var(--spacing-lg);
+}
+
 .message-content li {
   margin: var(--spacing-xs) 0;
+  line-height: 1.5;
 }
 
 .message-content strong {
@@ -138,6 +146,31 @@
 
 .message-content br {
   line-height: 1.8;
+}
+
+/* Clickable links in messages */
+.message-content .message-link {
+  color: var(--accent-color);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.message-content .message-link:hover {
+  color: var(--accent-hover);
+  border-bottom-color: var(--accent-color);
+  text-decoration: none;
+}
+
+.message-content .message-link:visited {
+  color: #6b46c1; /* Slightly different shade for visited links */
+}
+
+.message-content .message-link:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Streaming effect for assistant messages */

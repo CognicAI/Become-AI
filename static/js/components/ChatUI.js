@@ -146,21 +146,39 @@ export class ChatUI {
       // Italic text  
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       // Headers
+      .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
       .replace(/^### (.*$)/gm, '<h3>$1</h3>')
       .replace(/^## (.*$)/gm, '<h2>$1</h2>')
       .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+      // Markdown-style links [text](url) - process before plain URLs
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="message-link">$1</a>')
+      // Plain URLs (http/https) - but not ones already in href attributes
+      .replace(/(?<!href=["'])(?<!>)(https?:\/\/[^\s<>"']+)(?![^<]*<\/a>)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="message-link">$1</a>')
       // Line breaks for better readability
       .replace(/\n\n/g, '</p><p>')
       .replace(/\n/g, '<br>')
+      // Lists (basic support) - process before paragraph wrapping
+      .replace(/^\- (.*$)/gm, '<li>$1</li>')
+      .replace(/^\d+\.\s+(.*$)/gm, '<li class="numbered">$1</li>')
+      // Wrap consecutive list items in proper list tags
+      .replace(/(<li>.*?<\/li>)(?:\s*<br>\s*<li>.*?<\/li>)*/gs, (match) => {
+        if (match.includes('class="numbered"')) {
+          return '<ol>' + match.replace(/<br>\s*/g, '') + '</ol>';
+        } else {
+          return '<ul>' + match.replace(/<br>\s*/g, '') + '</ul>';
+        }
+      })
       // Wrap in paragraph if not already formatted
-      .replace(/^(?!<[hpu])/gm, '<p>')
+      .replace(/^(?!<[hpula])/gm, '<p>')
       .replace(/(?<![>])$/gm, '</p>')
-      // Clean up empty paragraphs
+      // Clean up empty paragraphs and multiple breaks
       .replace(/<p><\/p>/g, '')
       .replace(/<p><br><\/p>/g, '<br>')
-      // Lists (basic support)
-      .replace(/^\- (.*$)/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+      .replace(/<br>\s*<br>/g, '<br>')
+      // Clean up malformed list items that didn't get wrapped properly
+      .replace(/<li[^>]*>.*?<\/li>/gs, (match) => {
+        return match.replace(/<br>/g, ' ');
+      });
     
     return formatted;
   }
