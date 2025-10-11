@@ -40,6 +40,21 @@ class Settings(BaseSettings):
         env="LM_TEMPERATURE", 
         description="Temperature for LLM responses"
     )
+    lm_max_new_tokens: Optional[int] = Field(
+        default=None,
+        env="LM_MAX_NEW_TOKENS",
+        description="Maximum new tokens to generate (override lm_max_tokens if set)"
+    )
+    lm_quantization: Optional[str] = Field(
+        default=None,
+        env="LM_QUANTIZATION",
+        description="Quantization type for LLM inference (e.g., fp16, int8)"
+    )
+    lm_inference_framework: str = Field(
+        default="lmstudio",
+        env="LM_INFERENCE_FRAMEWORK",
+        description="Inference framework for LLM (e.g., lmstudio, transformers)"
+    )
     
     # Embedding settings
     embedding_model: str = Field(

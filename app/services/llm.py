@@ -37,13 +37,23 @@ class LLMService:
         self.base_url = settings.lmstudio_url.rstrip('/')
         self.model_name = settings.lm_model_name
         self.max_tokens = settings.lm_max_tokens
+        # Use lm_max_new_tokens if provided, else fallback to max_tokens
+        self.max_new_tokens = settings.lm_max_new_tokens or settings.lm_max_tokens
         self.temperature = settings.lm_temperature
+        self.quantization = settings.lm_quantization
+        self.framework = settings.lm_inference_framework
         self.session: Optional[aiohttp.ClientSession] = None
     
     async def __aenter__(self):
         """Async context manager entry."""
         timeout = aiohttp.ClientTimeout(total=120)  # Longer timeout for LLM responses
         self.session = aiohttp.ClientSession(timeout=timeout)
+        # Log LLM configuration
+        logger.info(
+            f"LLM initialized with model={self.model_name}, framework={self.framework}, "
+            f"quantization={self.quantization}, max_tokens={self.max_tokens}, "
+            f"max_new_tokens={self.max_new_tokens}, temperature={self.temperature}"
+        )
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -65,10 +75,14 @@ class LLMService:
     
     async def _test_connection_impl(self) -> bool:
         """Internal implementation of connection test."""
+        # Ensure session is initialized
+        if self.session is None:
+            raise RuntimeError("LLM service not initialized. Use async context manager.")
+        session = self.session
         try:
             # Try to get model info
             url = f"{self.base_url}/v1/models"
-            async with self.session.get(url) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     data = await response.json() or {}
                     logger.info(f"LM Studio connection successful. Available models: {len(data.get('data', []))}")

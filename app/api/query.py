@@ -158,9 +158,16 @@ async def query_rag_system_stream(
         StreamingResponse with SSE events
     """
     async def generate_stream():
+        # Initialize timing for detailed logs
+        start_time = datetime.now()
+        prev_time = start_time
+        logger.info(f"[stream] Flow started at {start_time.isoformat()}")
         try:
             # Normalize the site URL
             base_url = normalize_url(site_base_url)
+            now = datetime.now()
+            logger.info(f"[stream] normalize_url took {(now - prev_time).total_seconds():.3f}s")
+            prev_time = now
             
             # Check if site exists
             site_query = text("SELECT id FROM sites WHERE base_url = :url")
@@ -174,6 +181,9 @@ async def query_rag_system_stream(
             
             # Initialize embedding service
             await embedding_service.initialize()
+            now = datetime.now()
+            logger.info(f"[stream] embedding_service.initialize took {(now - prev_time).total_seconds():.3f}s")
+            prev_time = now
             
             # Send status update
             yield f"data: {json.dumps({'status': 'Searching for relevant content...'})}\n\n"
@@ -181,6 +191,9 @@ async def query_rag_system_stream(
             # Generate query embedding
             query_embedding_result = await embedding_service.generate_embedding(question)
             query_embedding = query_embedding_result.embedding
+            now = datetime.now()
+            logger.info(f"[stream] generate_embedding took {(now - prev_time).total_seconds():.3f}s")
+            prev_time = now
             
             # Search for similar chunks
             similarity_query = text("""
@@ -207,13 +220,17 @@ async def query_rag_system_stream(
                 'max_chunks': max_chunks
             })
             
+            # Vector search execution
             chunks = chunks_result.fetchall()
+            now = datetime.now()
+            logger.info(f"[stream] vector search took {(now - prev_time).total_seconds():.3f}s, found {len(chunks)} chunks")
+            prev_time = now
             
             if not chunks:
                 yield f"data: {json.dumps({'error': 'No relevant content found'})}\n\n"
                 return
             
-            # Send chunk metadata
+            # Build chunk contexts and metadata
             chunk_metadata = []
             chunk_contexts = []
             
@@ -237,17 +254,33 @@ async def query_rag_system_stream(
                     'similarity_score': similarity_score
                 })
             
+            # Log chunk context building time
+            now = datetime.now()
+            logger.info(f"[stream] build chunk contexts took {(now - prev_time).total_seconds():.3f}s")
+            prev_time = now
+            # Send chunk metadata
             yield f"data: {json.dumps({'chunks': chunk_metadata})}\n\n"
+            now = datetime.now()
+            logger.info(f"[stream] sent chunk metadata took {(now - prev_time).total_seconds():.3f}s")
+            prev_time = now
             yield f"data: {json.dumps({'status': 'Generating answer...'})}\n\n"
+            now = datetime.now()
+            logger.info(f"[stream] prepared for LLM streaming took {(now - prev_time).total_seconds():.3f}s")
+            prev_time = now
             
-            # Stream the answer
+            # Stream the answer and log LLM generation time
+            llm_start = datetime.now()
             async with llm_service as llm:
                 async for token in llm.answer_question_stream(question, chunk_contexts):
                     yield f"data: {json.dumps({'token': token})}\n\n"
+            llm_end = datetime.now()
+            logger.info(f"[stream] LLM generation took {(llm_end - llm_start).total_seconds():.3f}s")
             
             # Send completion signal
             yield f"data: {json.dumps({'status': 'completed'})}\n\n"
             yield "data: [DONE]\n\n"
+            end_time = datetime.now()
+            logger.info(f"[stream] total flow took {(end_time - start_time).total_seconds():.3f}s")
             
         except Exception as e:
             logger.error(f"Streaming query failed: {e}")
