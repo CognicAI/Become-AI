@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fin Widget Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            padding: 40px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h1 { margin-top: 0; }
+        code {
+            background: #eee;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .controls {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background: #000;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-right: 8px;
+        }
+        button:hover { opacity: 0.9; }
+        button.secondary {
+            background: #fff;
+            color: #333;
+            border: 1px solid #ccc;
+        }
+        #log {
+            margin-top: 20px;
+            padding: 10px;
+            background: #2d2d2d;
+            color: #0f0;
+            font-family: monospace;
+            border-radius: 6px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Fin Widget Demo</h1>
+        <p>This page demonstrates the embeddable chat widget. The widget launcher should appear in the bottom right.</p>
+        
+        <h3>Installation</h3>
+        <p>Add this snippet to your HTML:</p>
+        <pre><code>&lt;script src="http://localhost:3000/fin-widget.js" async&gt;&lt;/script&gt;</code></pre>
+
+        <div class="controls">
+            <h3>Client API Controls</h3>
+            <p>Interact with the widget programmatically via <code>window.finChat</code>.</p>
+            
+            <button onclick="finChat.open()">Open Widget</button>
+            <button class="secondary" onclick="finChat.close()">Close Widget</button>
+            <br><br>
+            <button class="secondary" onclick="finChat.send('Hello from parent page!')">Send Message</button>
+            <button class="secondary" onclick="finChat.setTheme({ accent: '#ff0055' })">Set Theme (Pink)</button>
+            <button class="secondary" onclick="finChat.setTheme({ accent: '#000000' })">Reset Theme</button>
+        </div>
+
+        <div id="log">Waiting for events...</div>
+    </div>
+
+    <!-- Embed Script -->
+    <!-- data-widget-url is optional if the script defaults to the correct location, 
+         but useful for dev/prod separation -->
+    <script 
+        src="/fin-widget.js" 
+        data-widget-url="http://localhost:3000/widget.html"
+        data-api-url="http://localhost:8000"
+        data-site-url="https://anurag.edu.in/"
+    ></script>
+
+    <script>
+        const logEl = document.getElementById('log');
+        
+        function log(msg) {
+            const line = document.createElement('div');
+            line.textContent = `> ${new Date().toLocaleTimeString()} ${msg}`;
+            logEl.appendChild(line);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // Listen for Widget Events
+        window.addEventListener('finChat.ready', (e) => {
+            log('EVENT: finChat.ready - Widget loaded');
+        });
+
+        window.addEventListener('finChat.message', (e) => {
+            log(`EVENT: finChat.message - User sent: "${e.detail.text}"`);
+        });
+    </script>
+</body>
+</html>

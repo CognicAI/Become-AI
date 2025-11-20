@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stubot Chat Widget</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #1f1f1f;
+            --accent-color: #203562; /* Anurag Blue */
+            --accent-text: #ffffff;
+            --agent-bg: #f3f3f3;
+            --agent-text: #1f1f1f;
+            --header-bg: #ffffff;
+            --border-color: #e5e5e5;
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            padding: 16px 20px;
+            background: var(--header-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 140px; /* Increased width for the wide logo */
+            height: 45px;
+            background-color: transparent; /* Removed background color */
+            border-radius: 0; /* Removed border radius */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        .brand-icon svg {
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            /* Removed fill: white to respect SVG colors */
+        }
+
+        .brand-info h1 {
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .brand-info p {
+            font-size: 13px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .header-actions {
+            color: #666;
+            cursor: pointer;
+        }
+
+        /* Messages Area */
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: var(--bg-color);
+        }
+
+        .message-row {
+            display: flex;
+            flex-direction: column;
+            max-width: 85%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .message-row.agent {
+            align-self: flex-start;
+        }
+
+        .message-row.user {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .bubble {
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.5;
+            position: relative;
+            word-wrap: break-word;
+        }
+
+        .agent .bubble {
+            background-color: var(--agent-bg);
+            color: var(--agent-text);
+            border-bottom-left-radius: 4px;
+        }
+
+        .user .bubble {
+            background-color: var(--accent-color);
+            color: var(--accent-text);
+            border-bottom-right-radius: 4px;
+        }
+
+        .meta {
+            font-size: 11px;
+            color: #999;
+            margin-top: 4px;
+            margin-left: 4px;
+        }
+
+        /* Composer */
+        footer {
+            padding: 16px;
+            background: var(--bg-color);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .composer-container {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 24px;
+            padding: 8px 16px;
+            transition: border-color 0.2s;
+        }
+
+        .composer-container:focus-within {
+            border-color: #000;
+        }
+
+        textarea {
+            flex: 1;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: inherit;
+            font-size: 15px;
+            max-height: 100px;
+            padding: 8px 0;
+            margin: 0 8px;
+            background: transparent;
+        }
+
+        .actions-left, .actions-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #999;
+        }
+
+        button.icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            color: #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+        }
+
+        button.icon-btn:hover {
+            color: #333;
+        }
+
+        button.send-btn {
+            background: #f0f0f0;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            color: #999;
+        }
+        
+        button.send-btn.active {
+            background: var(--accent-color);
+            color: var(--accent-text);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ddd;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <div class="brand-icon">
+                <!-- Anurag University Logo SVG -->
+                <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 486.5 103.31" style="enable-background:new 0 0 486.5 103.31;" xml:space="preserve">
+                    <style type="text/css">
+                        .st0{fill:#2B3356;}
+                        .st1{fill:#BF2028;}
+                    </style>
+                    <g>
+                        <path class="st0" d="M165.87,14.52l-8.63,24.94h17.25L165.87,14.52z M177.74,49.02H154l-3.93,11.36h-12.56l21.44-59.7h13.92 l21.44,59.7h-12.64L177.74,49.02z"/>
+                        <polygon class="st0" points="250.76,0.68 250.76,60.38 238.8,60.38 211.73,19.47 211.73,60.38 199.77,60.38 199.77,0.68 211.73,0.68 238.8,41.68 238.8,0.68 	"/>
+                        <path class="st0" d="M261.61,0.77h11.96v36.9c0,8.2,4.44,12.47,12.04,12.47c7.69,0,12.13-4.27,12.13-12.47V0.77h12.04v36.81 c0,15.72-11.27,23.4-24.34,23.4c-13.07,0-23.83-7.69-23.83-23.4V0.77z"/>
+                        <path class="st0" d="M342.49,10.68h-9.99v17.51h9.99c6.66,0,9.65-3.5,9.65-8.88C352.14,14.01,349.15,10.68,342.49,10.68 M342.92,0.77c14.35,0,21.52,8.28,21.52,18.28c0,7.26-4.01,14.6-13.58,17.17l14.26,24.17h-13.84l-13.15-23.23h-5.64v23.23h-11.96 V0.77H342.92z"/>
+                        <path class="st0" d="M398.24,14.52l-8.63,24.94h17.25L398.24,14.52z M410.11,49.02h-23.74l-3.93,11.36h-12.56l21.44-59.7h13.92 l21.44,59.7h-12.64L410.11,49.02z"/>
+                        <path class="st0" d="M485.04,18.7h-13.75c-2.73-5.04-7.69-7.69-14.01-7.69c-10.68,0-18.11,7.6-18.11,19.47 c0,12.13,7.52,19.65,18.62,19.65c9.23,0,15.12-5.3,16.91-13.75h-20.5v-9.14h32.28v10.42c-2.39,12.13-13.24,23.23-29.12,23.23 c-17.34,0-30.49-12.56-30.49-30.41C426.88,12.64,440.03,0,457.29,0C470.61,0,481.2,6.75,485.04,18.7"/>
+                        <path class="st0" d="M137.52,75.23h5.57v17.2c0,3.82,2.07,5.82,5.61,5.82c3.59,0,5.65-1.99,5.65-5.82v-17.2h5.62V92.4 c0,7.33-5.26,10.91-11.35,10.91c-6.09,0-11.11-3.59-11.11-10.91V75.23z"/>
+                        <polygon class="st0" points="203.45,75.19 203.45,103.03 197.87,103.03 185.25,83.95 185.25,103.03 179.67,103.03 179.67,75.19 185.25,75.19 197.87,94.31 197.87,75.19 	"/>
+                        <rect x="223.3" y="75.23" class="st0" width="5.58" height="27.79"/>
+                        <polygon class="st0" points="267.07,75.23 273.01,75.23 262.81,103.03 256.04,103.03 245.85,75.23 251.82,75.23 259.46,97.33 	"/>
+                        <polygon class="st0" points="306.19,79.73 295.63,79.73 295.63,86.7 304.99,86.7 304.99,91.12 295.63,91.12 295.63,98.49 306.19,98.49 306.19,103.03 290.06,103.03 290.06,75.19 306.19,75.19 	"/>
+                        <path class="st0" d="M335.58,79.85h-4.66v8.16h4.66c3.11,0,4.5-1.63,4.5-4.14C340.08,81.41,338.68,79.85,335.58,79.85 M335.77,75.23c6.69,0,10.04,3.86,10.04,8.52c0,3.39-1.87,6.81-6.33,8l6.65,11.27h-6.45l-6.13-10.83h-2.63v10.83h-5.57V75.23 H335.77z"/>
+                        <path class="st0" d="M373.8,103.31c-5.77,0-10.23-3.03-10.31-8.28h5.97c0.16,2.23,1.63,3.71,4.22,3.71c2.63,0,4.18-1.4,4.18-3.39 c0-6.01-14.34-2.39-14.29-12.46c0-5.02,4.06-8.04,9.8-8.04c5.69,0,9.59,2.91,9.96,7.92h-6.13c-0.12-1.83-1.59-3.26-3.98-3.3 c-2.19-0.08-3.82,1-3.82,3.27c0,5.58,14.26,2.47,14.26,12.27C383.64,99.37,380.13,103.31,373.8,103.31"/>
+                        <rect x="402.52" y="75.23" class="st0" width="5.58" height="27.79"/>
+                        <polygon class="st0" points="425.39,75.23 445.77,75.23 445.77,79.73 438.37,79.73 438.37,103.03 432.79,103.03 432.79,79.73 425.39,79.73 	"/>
+                        <polygon class="st0" points="462.09,75.23 468.38,75.23 474.35,87.94 480.28,75.23 486.5,75.23 477.1,93.35 477.1,103.03 471.52,103.03 471.52,93.35 	"/>
+                        <path class="st1" d="M23.72,23.45c0-7.57-0.94-12.71-4.6-17.18C15.7,2.09,9.42,0.84,8.64,0.7C8.61,0.69,8.59,0.69,8.57,0.69h12.56 h30.11L23.72,49.33V23.45z"/>
+                        <path class="st0" d="M88.19,102.98c-0.03,0.01-0.05,0.03-0.08,0.04h32l-10.17-19.1C105.1,92.5,97.42,99.28,88.19,102.98"/>
+                        <path class="st0" d="M45.62,87.53c-2.3-5.65-2.88-15.96,0.26-22.47c2.57-5.34,18.43-33,22.2-39.58l5.9,10.47V21.49L62.21,0.68 h-4.29c-0.06,0.06-0.11,0.15-0.15,0.26L0,103.03h59.3C53.07,99.85,48.08,94.38,45.62,87.53"/>
+                        <path class="st1" d="M108.39,0.69H68.51c0.51,0.08,11.28,3.84,11.28,15.61v40.62l-0.01-0.01c0,16.07-11.99,29.34-27.51,31.36 c3.7,7.14,11.16,12.02,19.76,12.02c20.84,0,37.73-16.89,37.73-37.73c0-9.45-0.01-32.26-0.01-39.12c0-7.57,0.95-12.71,4.6-17.18 c3.65-4.46,10.56-5.59,10.56-5.59H108.39z"/>
+                    </g>
+                </svg>
+            </div>
+            <div class="brand-info">
+                <h1>Stubot</h1>
+                <p>The team can also help</p>
+            </div>
+        </div>
+    </header>
+
+    <div id="messages" role="log" aria-live="polite">
+        <!-- Initial messages will be injected by JS or hardcoded here -->
+    </div>
+
+    <footer>
+        <div class="composer-container">
+            <textarea id="composer" placeholder="Message..." rows="1" aria-label="Type a message"></textarea>
+            <div class="actions-right">
+                <button id="send-btn" class="icon-btn send-btn" aria-label="Send message">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // --- Configuration & State ---
+        const messagesContainer = document.getElementById('messages');
+        const composer = document.getElementById('composer');
+        const sendBtn = document.getElementById('send-btn');
+        
+        // Configuration from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const config = {
+            apiBaseUrl: urlParams.get('apiUrl') || 'http://localhost:8000',
+            siteBaseUrl: urlParams.get('siteUrl') || 'https://example.com' // Default or required
+        };
+
+        // Initial messages matching the screenshot
+        const initialMessages = [
+            { who: 'agent', text: 'Hi 👋 How can I help you today?' }
+        ];
+
+        // --- Initialization ---
+        function init() {
+            renderInitialMessages();
+            setupEventListeners();
+            notifyParentReady();
+        }
+
+        function renderInitialMessages() {
+            messagesContainer.innerHTML = '';
+            initialMessages.forEach(msg => addMessage(msg.who, msg.text));
+        }
+
+        function addMessage(who, text) {
+            const row = document.createElement('div');
+            row.className = `message-row ${who}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.textContent = text;
+            
+            row.appendChild(bubble);
+            
+            if (who === 'agent') {
+                const meta = document.createElement('div');
+                meta.className = 'meta';
+                meta.textContent = 'Stubot • Just now';
+                row.appendChild(meta);
+            }
+
+            messagesContainer.appendChild(row);
+            scrollToBottom();
+            return row;
+        }
+
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // --- Event Handling ---
+        function setupEventListeners() {
+            // Auto-resize textarea
+            composer.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+                toggleSendButton();
+            });
+
+            // Send on Enter (without Shift)
+            composer.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            sendBtn.addEventListener('click', sendMessage);
+
+            // Listen for messages from parent
+            window.addEventListener('message', handleParentMessage);
+        }
+
+        function toggleSendButton() {
+            if (composer.value.trim().length > 0) {
+                sendBtn.classList.add('active');
+            } else {
+                sendBtn.classList.remove('active');
+            }
+        }
+
+        function sendMessage() {
+            const text = composer.value.trim();
+            if (!text) return;
+
+            // Optimistic UI update
+            addMessage('user', text);
+            composer.value = '';
+            composer.style.height = 'auto';
+            toggleSendButton();
+
+            // Notify parent
+            notifyParentMessageSent(text);
+
+            // Stream response from API
+            streamResponse(text);
+        }
+
+        function streamResponse(question) {
+            // Create a placeholder message for the agent
+            const agentMsgRow = addMessage('agent', '');
+            const bubble = agentMsgRow.querySelector('.bubble');
+            // Add a loading indicator initially
+            bubble.innerHTML = '<span class="typing-indicator">...</span>';
+
+            const url = new URL(`${config.apiBaseUrl}/query/stream`);
+            url.searchParams.append('question', question);
+            url.searchParams.append('site_base_url', config.siteBaseUrl);
+
+            const eventSource = new EventSource(url.toString());
+            let isFirstToken = true;
+            let fullResponse = '';
+
+            eventSource.onmessage = (event) => {
+                if (event.data === '[DONE]') {
+                    eventSource.close();
+                    return;
+                }
+
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.error) {
+                        console.error('Stream error:', data.error);
+                        bubble.textContent = 'Sorry, something went wrong.';
+                        eventSource.close();
+                        return;
+                    }
+
+                    if (data.status === 'completed') {
+                        // Done
+                        return;
+                    }
+
+                    if (data.token) {
+                        if (isFirstToken) {
+                            bubble.innerHTML = ''; // Clear loading indicator
+                            isFirstToken = false;
+                        }
+                        fullResponse += data.token;
+                        // Simple markdown-like handling could go here, but for now just text
+                        bubble.textContent = fullResponse; 
+                        scrollToBottom();
+                    }
+                } catch (e) {
+                    console.error('Error parsing SSE data:', e);
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                console.error('EventSource failed:', err);
+                if (isFirstToken) {
+                    bubble.textContent = 'Connection failed. Please try again.';
+                }
+                eventSource.close();
+            };
+        }
+
+        // --- PostMessage Communication ---
+        
+        function notifyParentReady() {
+            // In production, you might want to restrict targetOrigin if known
+            // window.parent.postMessage({ type: 'widget.ready' }, 'https://your-client-site.com');
+            window.parent.postMessage({ type: 'widget.ready' }, '*');
+        }
+
+        function notifyParentMessageSent(text) {
+            window.parent.postMessage({ type: 'chat.message_sent', text: text }, '*');
+        }
+
+        function handleParentMessage(event) {
+            // SECURITY: In production, ALWAYS validate event.origin
+            // const ALLOWED_ORIGINS = ['https://client-site.com', 'http://localhost:3000'];
+            // if (!ALLOWED_ORIGINS.includes(event.origin)) return;
+            
+            // For this demo/template, we'll log the origin but proceed (or use a permissive check)
+            // console.log('Widget received message from:', event.origin);
+
+            const data = event.data;
+            if (!data || !data.type) return;
+
+            switch (data.type) {
+                case 'widget.set_theme':
+                    if (data.theme && data.theme.accent) {
+                        document.documentElement.style.setProperty('--accent-color', data.theme.accent);
+                    }
+                    break;
+                
+                case 'widget.add_message':
+                    if (data.who && data.text) {
+                        addMessage(data.who, data.text);
+                    }
+                    break;
+
+                case 'widget.reset':
+                    renderInitialMessages();
+                    break;
+            }
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
