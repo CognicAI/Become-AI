@@ -14,13 +14,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/process", tags=["process"])
 
-async def process_single_chunk(row: Any, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
+async def process_single_chunk(row: Any, db: Session, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
     """Process a single chunk with concurrency control."""
     chunk_id, content, url, old_title, old_summary = row
     
     async with semaphore:
         logger.info(f"Processing chunk {chunk_id} (Page URL: {url})")
-        db = SessionLocal()
         try:
             # Generate title
             new_title = await llm_service.generate_chunk_title(content)
@@ -28,7 +27,7 @@ async def process_single_chunk(row: Any, semaphore: asyncio.Semaphore) -> Dict[s
             # Generate summary
             new_summary = await llm_service.generate_chunk_summary(content, title=new_title)
             
-            # Update database
+            # Only update database if LLM generation succeeded
             update_query = text("""
                 UPDATE page_chunks 
                 SET title = :title, 
@@ -58,12 +57,12 @@ async def process_single_chunk(row: Any, semaphore: asyncio.Semaphore) -> Dict[s
             
         except Exception as e:
             logger.error(f"Error processing chunk {chunk_id}: {e}")
+            # Rollback any partial changes
+            db.rollback()
             return {
                 "chunk_id": chunk_id,
                 "error": str(e)
             }
-        finally:
-            db.close()
 
 async def process_page_hierarchy(page_row: Any, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
     """Process a page and its chunks hierarchically."""
@@ -87,8 +86,8 @@ async def process_page_hierarchy(page_row: Any, semaphore: asyncio.Semaphore) ->
             logger.warning(f"No chunks found for page {page_id}")
             return {"page_id": page_id, "error": "No chunks found"}
             
-        # Process chunks concurrently
-        chunk_tasks = [process_single_chunk(row, semaphore) for row in chunk_rows]
+        # Process chunks concurrently, passing the db session
+        chunk_tasks = [process_single_chunk(row, db, semaphore) for row in chunk_rows]
         chunk_results = await asyncio.gather(*chunk_tasks)
         
         # Aggregate summaries
@@ -142,6 +141,8 @@ async def process_page_hierarchy(page_row: Any, semaphore: asyncio.Semaphore) ->
         
     except Exception as e:
         logger.error(f"Error processing page {page_id}: {e}")
+        # Rollback any partial changes
+        db.rollback()
         return {"page_id": page_id, "error": str(e)}
     finally:
         db.close()
@@ -182,21 +183,25 @@ async def generate_metadata_logic(site_id: Optional[int] = None, limit: Optional
         total_pages = len(page_rows)
         logger.info(f"Found {total_pages} pages to process")
         
-        # Concurrency control
+        # Concurrency control - limit concurrent LLM calls
         semaphore = asyncio.Semaphore(5)
         
         # Initialize LLM service
         async with llm_service:
-            # Process pages (which internally process chunks)
-            # We can process pages concurrently too, but let's be careful not to spawn too many tasks
-            # Since process_page_hierarchy spawns tasks for chunks, maybe we should process pages sequentially 
-            # or with a limited concurrency. The semaphore is passed down, so it limits TOTAL concurrent LLM calls.
-            # So it's safe to gather all page tasks.
+            # Process pages in smaller batches to avoid connection pool exhaustion
+            # Process 3 pages at a time to limit database connections
+            batch_size = 3
+            all_results = []
             
-            tasks = [process_page_hierarchy(row, semaphore) for row in page_rows]
-            results = await asyncio.gather(*tasks)
+            for i in range(0, total_pages, batch_size):
+                batch = page_rows[i:i + batch_size]
+                tasks = [process_page_hierarchy(row, semaphore) for row in batch]
+                batch_results = await asyncio.gather(*tasks)
+                all_results.extend(batch_results)
+                logger.info(f"Completed batch {i//batch_size + 1}/{(total_pages + batch_size - 1)//batch_size}")
             
         logger.info("Metadata generation completed")
+        results = all_results
         return results
         
     except Exception as e:
