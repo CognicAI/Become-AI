@@ -18,6 +18,7 @@ CREATE TABLE site_pages (
     summary TEXT,
     content TEXT NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
+    is_metadata_updated BOOLEAN DEFAULT FALSE,
     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (site_id, url)
 );
@@ -33,6 +34,7 @@ CREATE TABLE page_chunks (
     token_count INT,
 --    embedding VECTOR(768), -- For OpenAI/Nomic/Gemma embeddings
     metadata JSONB DEFAULT '{}'::jsonb,
+    is_metadata_updated BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (page_id, chunk_number)
 );

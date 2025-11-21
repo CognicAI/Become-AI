@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 
-from .api import scrape, query
+from .api import scrape, query, process
 from .db.db import init_db, test_connection
 from .utils.logging import setup_logging
 from .utils.config import settings, get_cors_origins
@@ -67,6 +67,7 @@ app.add_middleware(
 # Include routers
 app.include_router(scrape.router)
 app.include_router(query.router)
+app.include_router(process.router)
 
 @app.get("/")
 async def root():

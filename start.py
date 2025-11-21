@@ -14,11 +14,18 @@ def main():
         sys.exit(1)
     
     # Check if virtual environment is activated
-    venv_python = Path(".venv/Scripts/python.exe")
+    if sys.platform == "win32":
+        venv_python = Path(".venv/Scripts/python.exe")
+    else:
+        venv_python = Path(".venv/bin/python")
+
     if not venv_python.exists():
         print("❌ Error: Virtual environment not found. Please create it first:")
-        print("   python -m venv .venv")
-        print("   .venv\\Scripts\\activate")
+        print("   python3 -m venv .venv")
+        if sys.platform == "win32":
+            print("   .venv\\Scripts\\activate")
+        else:
+            print("   source .venv/bin/activate")
         print("   pip install -r requirements.txt")
         sys.exit(1)
     
@@ -26,7 +33,8 @@ def main():
     if not Path(".env").exists():
         print("⚠️  Warning: .env file not found. Creating from template...")
         if Path(".env.example").exists():
-            subprocess.run(["copy", ".env.example", ".env"], shell=True)
+            import shutil
+            shutil.copy(".env.example", ".env")
             print("✅ Created .env file from template")
         else:
             print("❌ Error: .env.example not found")
