@@ -1,6 +1,6 @@
 # Become AI - RAG System
 
-![Become AI RAG System](Gemini_Generated_Image_7o373f7o373f7o37.png)
+![Become AI RAG System](WorkFlow.png)
 
 A modular web scraping and Retrieval-Augmented Generation (RAG) system that processes website content, generates embeddings, and provides intelligent Q&A using local LLMs via LM Studio.
 
